@@ -1,0 +1,536 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+input ApproveExitPermissionDto {
+  notes: String
+  rejectionReason: String
+  status: String!
+}
+
+type AuthPayload {
+  accessToken: String!
+  user: User!
+}
+
+input CreateEventDto {
+  allowGuests: Boolean! = false
+  campusId: String!
+  category: String
+  description: String
+  endDatetime: DateTime
+  imageUrl: String
+  locationId: String
+  locationText: String
+  maxAttendees: Float
+  price: Float! = 0
+  registrationDeadline: DateTime
+  registrationRequired: Boolean! = false
+  requirements: String
+  startDatetime: DateTime!
+  title: String!
+}
+
+input CreateEventRegistrationDto {
+  eventId: String!
+  notes: String
+  numberOfGuests: Float! = 0
+  studentId: String
+}
+
+input CreateExitPermissionDto {
+  authorizedDoc: String
+  authorizedName: String!
+  authorizedPhone: String
+  exitDate: DateTime!
+  exitTime: DateTime
+  notes: String
+  reason: String
+  relationship: String
+  returnTime: DateTime
+  studentId: String!
+  transportMethod: String
+}
+
+input CreateFamilyRelationshipDto {
+  canAuthorizeExits: Boolean! = false
+  canPickup: Boolean! = true
+  canViewGrades: Boolean! = true
+  isPrimaryContact: Boolean! = false
+  notes: String
+  parentId: String!
+  relationshipType: String!
+  studentId: String!
+}
+
+input CreateMessageDto {
+  allowReplies: Boolean! = true
+  attachmentUrls: [String!]
+  content: String!
+  parentMessageId: String
+  priority: String! = "normal"
+  recipients: [MessageRecipientInputDto!]!
+  subject: String
+  type: String! = "announcement"
+}
+
+input CreateNewsInput {
+  attachmentUrls: [String!]
+  campusId: String!
+  category: String
+  content: String!
+  expiresAt: DateTime
+  imageUrl: String
+  isPublished: Boolean! = false
+  priority: String! = "normal"
+  publishedAt: DateTime
+  summary: String
+  targetAudience: String! = "all"
+  title: String!
+}
+
+input CreatePersonDto {
+  bloodType: String
+  customData: String
+  dateOfBirth: DateTime
+  documentNumber: String
+  documentType: String
+  emergencyContact: String
+  emergencyPhone: String
+  firstName: String!
+  gender: String
+  lastName: String!
+  medicalNotes: String
+  photoUrl: String
+}
+
+input CreateReportDto {
+  classId: String
+  content: String
+  fileUrl: String
+  isFinal: Boolean! = false
+  period: String
+  studentId: String
+  title: String!
+  type: String!
+}
+
+input CreateStudentDto {
+  academicYear: Float
+  campusId: String!
+  customData: String
+  enrollmentDate: DateTime
+  gradeLevel: String
+  notes: String
+  person: CreatePersonDto!
+  section: String
+  status: String! = "active"
+  studentCode: String
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type Event {
+  allowGuests: Boolean!
+  campusId: String!
+  campusName: String
+  category: String
+  createdAt: DateTime!
+  description: String
+  endDatetime: DateTime
+  id: ID!
+  imageUrl: String
+  isCancelled: Boolean!
+  locationId: ID
+  locationName: String
+  locationText: String
+  maxAttendees: Int
+  organizerId: String!
+  organizerName: String
+  price: Float!
+  registrationCount: Int
+  registrationDeadline: DateTime
+  registrationRequired: Boolean!
+  requirements: String
+  startDatetime: DateTime!
+  title: String!
+  updatedAt: DateTime!
+}
+
+type EventRegistration {
+  cancelledAt: DateTime
+  eventId: String!
+  id: ID!
+  notes: String
+  numberOfGuests: Int!
+  registeredAt: DateTime!
+  status: String!
+  studentId: ID
+  studentName: String
+  userId: String!
+}
+
+type ExitPermission {
+  approvedAt: DateTime
+  approvedBy: String
+  approvedByName: String
+  authorizedDoc: String
+  authorizedName: String!
+  authorizedPhone: String
+  createdAt: DateTime!
+  exitDate: DateTime!
+  exitTime: DateTime
+  id: ID!
+  notes: String
+  reason: String
+  rejectionReason: String
+  relationship: String
+  requestedById: String!
+  requestedByName: String
+  returnTime: DateTime
+  status: String!
+  studentId: String!
+  studentName: String
+  transportMethod: String
+  updatedAt: DateTime!
+}
+
+type ExitPermissionStatusSummary {
+  approved: Int!
+  cancelled: Int!
+  pending: Int!
+  rejected: Int!
+  total: Int!
+}
+
+type FamilyRelationship {
+  canAuthorizeExits: Boolean!
+  canPickup: Boolean!
+  canViewGrades: Boolean!
+  createdAt: DateTime!
+  id: ID!
+  isPrimaryContact: Boolean!
+  notes: String
+  parentId: String!
+  parentName: String
+  relationshipType: String!
+  studentId: String!
+  studentName: String
+}
+
+input FirebaseAuthInput {
+  idToken: String!
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type Message {
+  allowReplies: Boolean!
+  attachmentUrls: [String!]
+  content: String!
+  createdAt: DateTime!
+  id: ID!
+  isRead: Boolean
+  parentMessageId: ID
+  priority: String!
+  readAt: DateTime
+  replyCount: Int
+  senderId: String!
+  senderName: String
+  sentAt: DateTime!
+  subject: String
+  type: String!
+}
+
+input MessageRecipientInputDto {
+  recipientId: String!
+  recipientType: String!
+}
+
+type Mutation {
+  approveExitPermission(id: String!, input: ApproveExitPermissionDto!, tenantId: String!): ExitPermission!
+  cancelEvent(id: String!, tenantId: String!): Event!
+  cancelEventRegistration(registrationId: String!, tenantId: String!): EventRegistration!
+  cancelExitPermission(id: String!, tenantId: String!): ExitPermission!
+  createEvent(input: CreateEventDto!, tenantId: String!): Event!
+  createExitPermission(input: CreateExitPermissionDto!, tenantId: String!): ExitPermission!
+  createFamilyRelationship(input: CreateFamilyRelationshipDto!, tenantId: String!): FamilyRelationship!
+  createMessage(input: CreateMessageDto!, tenantId: String!): Message!
+  createNews(input: CreateNewsInput!, tenantId: String!): News!
+  createReport(input: CreateReportDto!, tenantId: String!): Report!
+  createStudent(input: CreateStudentDto!, tenantId: String!): Student!
+  deleteEvent(id: String!, tenantId: String!): Boolean!
+  deleteExitPermission(id: String!, tenantId: String!): Boolean!
+  deleteFamilyRelationship(id: String!, tenantId: String!): Boolean!
+  deleteMessage(id: String!, tenantId: String!): Boolean!
+  deleteNews(id: String!, tenantId: String!): Boolean!
+  deleteReport(id: String!, tenantId: String!): Boolean!
+  deleteStudent(id: String!, tenantId: String!): Boolean!
+  login(input: LoginInput!): AuthPayload!
+  loginWithFirebase(input: FirebaseAuthInput!): AuthPayload!
+  markMessageAsRead(messageId: String!, tenantId: String!): Boolean!
+  markNewsAsRead(newsId: String!, tenantId: String!): Boolean!
+  markReportAsFinal(id: String!, tenantId: String!): Report!
+  register(input: RegisterInput!): AuthPayload!
+  registerForEvent(input: CreateEventRegistrationDto!, tenantId: String!): EventRegistration!
+  replyToMessage(content: String!, parentMessageId: String!, tenantId: String!): Message!
+  updateEvent(id: String!, input: UpdateEventDto!, tenantId: String!): Event!
+  updateEventRegistration(input: UpdateEventRegistrationDto!, registrationId: String!, tenantId: String!): EventRegistration!
+  updateExitPermission(id: String!, input: UpdateExitPermissionDto!, tenantId: String!): ExitPermission!
+  updateFamilyRelationship(id: String!, input: UpdateFamilyRelationshipDto!, tenantId: String!): FamilyRelationship!
+  updateMessage(id: String!, input: UpdateMessageDto!, tenantId: String!): Message!
+  updateNews(id: String!, input: UpdateNewsInput!, tenantId: String!): News!
+  updateReport(id: String!, input: UpdateReportDto!, tenantId: String!): Report!
+  updateStudent(id: String!, input: UpdateStudentDto!, tenantId: String!): Student!
+}
+
+type News {
+  attachmentUrls: [String!]
+  authorName: String
+  campusId: String!
+  category: String
+  content: String!
+  createdAt: DateTime!
+  expiresAt: DateTime
+  id: ID!
+  imageUrl: String
+  isPublished: Boolean!
+  isRead: Boolean
+  priority: String!
+  publishedAt: DateTime
+  summary: String
+  targetAudience: String!
+  title: String!
+  updatedAt: DateTime!
+}
+
+type Query {
+  classReports(classId: String!, tenantId: String!): [Report!]!
+  event(id: String!, tenantId: String!): Event
+  eventRegistrations(eventId: String!, tenantId: String!): [EventRegistration!]!
+  events(campusId: String, category: String, registrationRequired: Boolean, skip: Int, take: Int, tenantId: String!, upcoming: Boolean): [Event!]!
+  exitPermission(id: String!, tenantId: String!): ExitPermission
+  exitPermissionStatusSummary(campusId: String, dateFrom: DateTime, dateTo: DateTime, tenantId: String!): ExitPermissionStatusSummary!
+  exitPermissions(campusId: String, dateFrom: DateTime, dateTo: DateTime, skip: Int, status: String, studentId: String, take: Int, tenantId: String!): [ExitPermission!]!
+  me: User
+  message(id: String!, tenantId: String!): Message
+  messages(parentMessageId: String, priority: String, skip: Int, take: Int, tenantId: String!, type: String, unreadOnly: Boolean): [Message!]!
+  myExitPermissions(tenantId: String!): [ExitPermission!]!
+  myPermissions: [String!]!
+  myStudents(tenantId: String!): [Student!]!
+  news(filter: String, studentId: String, tenantId: String!): [News!]!
+  newsItem(id: String!, tenantId: String!): News
+  pendingExitPermissionCount(campusId: String, tenantId: String!): Int!
+  report(id: String!, tenantId: String!): Report
+  reportStatistics(campusId: String, classId: String, period: String, tenantId: String!, type: String): ReportStatistics!
+  reportTypes(tenantId: String!): [ReportType!]!
+  reports(classId: String, isFinal: Boolean, period: String, skip: Int, studentId: String, take: Int, tenantId: String!, type: String): [Report!]!
+  student(id: String!, tenantId: String!): Student
+  studentExitPermissions(studentId: String!, tenantId: String!): [ExitPermission!]!
+  studentReports(studentId: String!, tenantId: String!): [Report!]!
+  studentStatistics(campusId: String, tenantId: String!): StudentStatistics!
+  studentSummaryReport(period: String, studentId: String!, tenantId: String!): StudentSummaryReport!
+  students(academicYear: Int, campusId: String, gradeLevel: String, search: String, section: String, skip: Int, status: String, take: Int, tenantId: String!): [Student!]!
+  unreadMessageCount(tenantId: String!): Int!
+  unreadNewsCount(tenantId: String!): Float!
+  userEventRegistrations(tenantId: String!): [EventRegistration!]!
+}
+
+input RegisterInput {
+  email: String!
+  firstName: String!
+  lastName: String!
+  password: String!
+  role: String! = "parent"
+  tenantId: String!
+}
+
+type Report {
+  classId: String
+  content: String
+  createdAt: DateTime!
+  fileUrl: String
+  generatedBy: String!
+  generatedByName: String
+  id: ID!
+  isFinal: Boolean!
+  period: String
+  studentId: String
+  studentName: String
+  title: String!
+  type: String!
+}
+
+type ReportStatistics {
+  byType: String!
+  draftReports: Int!
+  finalReports: Int!
+  total: Int!
+}
+
+type ReportType {
+  label: String!
+  value: String!
+}
+
+type Student {
+  academicYear: Float
+  campusId: String!
+  campusName: String
+  createdAt: DateTime!
+  enrollmentDate: DateTime
+  fullName: String
+  gradeLevel: String
+  id: ID!
+  isPrimaryContact: Boolean
+  notes: String
+  personId: String!
+  relationshipType: String
+  section: String
+  status: String!
+  studentCode: String
+  updatedAt: DateTime!
+}
+
+type StudentStatistics {
+  active: Int!
+  byGrade: String!
+  byStatus: String!
+  inactive: Int!
+  total: Int!
+}
+
+type StudentSummaryReport {
+  finalReports: Int!
+  generatedAt: DateTime!
+  latestReport: String
+  period: String
+  reportsByType: String!
+  student: String!
+  totalReports: Int!
+}
+
+input UpdateEventDto {
+  allowGuests: Boolean
+  category: String
+  description: String
+  endDatetime: DateTime
+  imageUrl: String
+  isCancelled: Boolean
+  locationId: String
+  locationText: String
+  maxAttendees: Float
+  price: Float
+  registrationDeadline: DateTime
+  registrationRequired: Boolean
+  requirements: String
+  startDatetime: DateTime
+  title: String
+}
+
+input UpdateEventRegistrationDto {
+  notes: String
+  numberOfGuests: Float
+  status: String
+}
+
+input UpdateExitPermissionDto {
+  authorizedDoc: String
+  authorizedName: String
+  authorizedPhone: String
+  exitDate: DateTime
+  exitTime: DateTime
+  notes: String
+  reason: String
+  relationship: String
+  returnTime: DateTime
+  transportMethod: String
+}
+
+input UpdateFamilyRelationshipDto {
+  canAuthorizeExits: Boolean
+  canPickup: Boolean
+  canViewGrades: Boolean
+  isPrimaryContact: Boolean
+  notes: String
+  relationshipType: String
+}
+
+input UpdateMessageDto {
+  allowReplies: Boolean
+  attachmentUrls: [String!]
+  content: String
+  priority: String
+  subject: String
+  type: String
+}
+
+input UpdateNewsInput {
+  attachmentUrls: [String!]
+  category: String
+  content: String
+  expiresAt: DateTime
+  imageUrl: String
+  isPublished: Boolean
+  priority: String
+  publishedAt: DateTime
+  summary: String
+  targetAudience: String
+  title: String
+}
+
+input UpdatePersonDto {
+  bloodType: String
+  customData: String
+  dateOfBirth: DateTime
+  documentNumber: String
+  documentType: String
+  emergencyContact: String
+  emergencyPhone: String
+  firstName: String
+  gender: String
+  lastName: String
+  medicalNotes: String
+  photoUrl: String
+}
+
+input UpdateReportDto {
+  content: String
+  fileUrl: String
+  isFinal: Boolean
+  period: String
+  title: String
+}
+
+input UpdateStudentDto {
+  academicYear: Float
+  campusId: String
+  customData: String
+  enrollmentDate: DateTime
+  gradeLevel: String
+  notes: String
+  person: UpdatePersonDto
+  section: String
+  status: String
+  studentCode: String
+}
+
+type User {
+  createdAt: DateTime!
+  email: String!
+  firstName: String!
+  id: String!
+  isActive: Boolean!
+  isSuperAdmin: Boolean!
+  lastLoginAt: DateTime
+  lastName: String!
+  phone: String
+  photoUrl: String
+  updatedAt: DateTime!
+}

@@ -1,0 +1,503 @@
+// Prisma Schema for ColeApp - Multitenant Architecture
+// Schema-per-tenant strategy with shared tables
+
+generator client {
+  provider        = "prisma-client-js"
+  // previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // schemas  = ["public", "tenant_*"]
+}
+
+// ==========================================
+// SHARED SCHEMA (public)
+// ==========================================
+
+model Tenant {
+  id               String    @id @default(uuid())
+  name             String
+  subdomain        String    @unique
+  schemaName       String    @unique
+  logoUrl          String?
+  primaryColor     String?
+  secondaryColor   String?
+  contactEmail     String?
+  contactPhone     String?
+  website          String?
+  isActive         Boolean   @default(true)
+  subscriptionPlan String    @default("basic")
+  subscriptionEnd  DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  users        User[]
+  customFields CustomField[]
+
+}
+
+model User {
+  id              String    @id @default(uuid())
+  email           String    @unique
+  firebaseUid     String?   @unique
+  firstName       String
+  lastName        String
+  phone           String?
+  photoUrl        String?
+  isActive        Boolean   @default(true)
+  isSuperAdmin    Boolean   @default(false)
+  lastLoginAt     DateTime?
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenants       Tenant[]
+  userRoles     UserRole[]
+  notifications Notification[]
+
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String
+  displayName String
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  permissions Permission[]
+  userRoles   UserRole[]
+
+  @@unique([name])
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  displayName String
+  module      String
+  action      String
+  createdAt   DateTime @default(now())
+
+  roles Role[]
+
+}
+
+model UserRole {
+  id         String   @id @default(uuid())
+  userId     String
+  roleId     String
+  tenantId   String
+  assignedAt DateTime @default(now())
+  assignedBy String?
+
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId, tenantId])
+}
+
+// Dynamic Fields Configuration
+model CustomField {
+  id          String   @id @default(uuid())
+  tenantId    String
+  entityType  String // 'student', 'parent', 'teacher', 'event'
+  fieldName   String
+  fieldType   String // 'text', 'number', 'date', 'select', 'file'
+  fieldLabel  String
+  isRequired  Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  validations Json? // JSON with validation rules
+  options     Json? // For select fields
+  metadata    Json?
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, entityType, fieldName])
+}
+
+model Notification {
+  id      String    @id @default(uuid())
+  userId  String
+  type    String // 'push', 'email', 'sms'
+  title   String
+  message String
+  data    Json?
+  isRead  Boolean   @default(false)
+  sentAt  DateTime  @default(now())
+  readAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+
+}
+
+// ==========================================
+// TENANT SCHEMA (tenant_*)
+// These models will be created per tenant
+// ==========================================
+
+model School {
+  id        String   @id @default(uuid())
+  name      String
+  campuses  Campus[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+}
+
+model Campus {
+  id         String   @id @default(uuid())
+  schoolId   String
+  name       String
+  address    String?
+  city       String?
+  postalCode String?
+  phone      String?
+  email      String?
+  isMain     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  school    School     @relation(fields: [schoolId], references: [id])
+  locations Location[]
+  students  Student[]
+  classes   Class[]
+  news      News[]
+  events    Event[]
+
+}
+
+model Location {
+  id          String   @id @default(uuid())
+  campusId    String
+  name        String
+  type        String // 'classroom', 'auditorium', 'sports_field', etc.
+  capacity    Int?
+  floor       String?
+  building    String?
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  campus  Campus  @relation(fields: [campusId], references: [id])
+  classes Class[]
+  events  Event[]
+
+}
+
+model Person {
+  id               String    @id @default(uuid())
+  documentType     String?
+  documentNumber   String?   @unique
+  firstName        String
+  lastName         String
+  dateOfBirth      DateTime?
+  gender           String?
+  bloodType        String?
+  medicalNotes     String?
+  emergencyContact String?
+  emergencyPhone   String?
+  photoUrl         String?
+  customData       Json? // Dynamic fields data
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  student Student?
+  parent  Parent?
+  teacher Teacher?
+
+}
+
+model Student {
+  id             String    @id @default(uuid())
+  personId       String    @unique
+  campusId       String
+  studentCode    String?   @unique
+  enrollmentDate DateTime?
+  gradeLevel     String?
+  section        String?
+  academicYear   Int?
+  status         String    @default("active")
+  notes          String?
+  customData     Json? // Dynamic fields data
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  person             Person               @relation(fields: [personId], references: [id])
+  campus             Campus               @relation(fields: [campusId], references: [id])
+  familyRelations    FamilyRelationship[]
+  studentClasses     StudentClass[]
+  exitPermissions    ExitPermission[]
+  reports            Report[]
+  eventRegistrations EventRegistration[]
+
+}
+
+model Parent {
+  id         String   @id @default(uuid())
+  personId   String   @unique
+  userId     String // References public.User
+  customData Json? // Dynamic fields data
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  person             Person               @relation(fields: [personId], references: [id])
+  familyRelations    FamilyRelationship[]
+  eventRegistrations EventRegistration[]
+  exitPermissions    ExitPermission[]
+
+}
+
+model Teacher {
+  id           String   @id @default(uuid())
+  personId     String   @unique
+  userId       String // References public.User
+  employeeCode String?  @unique
+  specialties  String[]
+  customData   Json? // Dynamic fields data
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  person         Person         @relation(fields: [personId], references: [id])
+  teacherClasses TeacherClass[]
+  news           News[]
+  events         Event[]
+  messages       Message[]
+
+}
+
+model Class {
+  id           String   @id @default(uuid())
+  campusId     String
+  locationId   String?
+  name         String
+  gradeLevel   String?
+  section      String?
+  academicYear Int
+  maxStudents  Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  campus         Campus         @relation(fields: [campusId], references: [id])
+  location       Location?      @relation(fields: [locationId], references: [id])
+  studentClasses StudentClass[]
+  teacherClasses TeacherClass[]
+
+}
+
+model FamilyRelationship {
+  id                String   @id @default(uuid())
+  studentId         String
+  parentId          String
+  relationshipType  String // 'father', 'mother', 'guardian', etc.
+  isPrimaryContact  Boolean  @default(false)
+  canPickup         Boolean  @default(true)
+  canViewGrades     Boolean  @default(true)
+  canAuthorizeExits Boolean  @default(false)
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id])
+  parent  Parent  @relation(fields: [parentId], references: [id])
+
+  @@unique([studentId, parentId])
+}
+
+model StudentClass {
+  studentId      String
+  classId        String
+  enrollmentDate DateTime  @default(now())
+  withdrawalDate DateTime?
+  status         String    @default("active")
+
+  student Student @relation(fields: [studentId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id])
+
+  @@id([studentId, classId])
+}
+
+model TeacherClass {
+  teacherId String
+  classId   String
+  subject   String
+  isPrimary Boolean @default(false)
+
+  teacher Teacher @relation(fields: [teacherId], references: [id])
+  class   Class   @relation(fields: [classId], references: [id])
+
+  @@id([teacherId, classId, subject])
+}
+
+model News {
+  id             String    @id @default(uuid())
+  campusId       String
+  authorId       String
+  title          String
+  content        String
+  summary        String?
+  category       String?
+  priority       String    @default("normal")
+  imageUrl       String?
+  attachmentUrls Json?
+  targetAudience String    @default("all")
+  isPublished    Boolean   @default(false)
+  publishedAt    DateTime?
+  expiresAt      DateTime?
+  customData     Json? // Dynamic fields data
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  campus      Campus       @relation(fields: [campusId], references: [id])
+  author      Teacher      @relation(fields: [authorId], references: [id])
+  newsTargets NewsTarget[]
+  newsReads   NewsRead[]
+
+}
+
+model Event {
+  id                   String    @id @default(uuid())
+  campusId             String
+  locationId           String?
+  organizerId          String
+  title                String
+  description          String?
+  locationText         String?
+  startDatetime        DateTime
+  endDatetime          DateTime?
+  category             String?
+  imageUrl             String?
+  maxAttendees         Int?
+  registrationRequired Boolean   @default(false)
+  registrationDeadline DateTime?
+  allowGuests          Boolean   @default(false)
+  price                Float     @default(0)
+  requirements         String?
+  isCancelled          Boolean   @default(false)
+  customData           Json? // Dynamic fields data
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  campus        Campus              @relation(fields: [campusId], references: [id])
+  location      Location?           @relation(fields: [locationId], references: [id])
+  organizer     Teacher             @relation(fields: [organizerId], references: [id])
+  registrations EventRegistration[]
+
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  senderId        String
+  parentMessageId String?
+  subject         String?
+  content         String
+  priority        String   @default("normal")
+  type            String   @default("announcement")
+  allowReplies    Boolean  @default(true)
+  attachmentUrls  Json?
+  sentAt          DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  sender        Teacher            @relation(fields: [senderId], references: [id])
+  parentMessage Message?           @relation("MessageReplies", fields: [parentMessageId], references: [id])
+  replies       Message[]          @relation("MessageReplies")
+  recipients    MessageRecipient[]
+
+}
+
+model ExitPermission {
+  id              String    @id @default(uuid())
+  studentId       String
+  requestedById   String
+  authorizedName  String
+  authorizedDoc   String?
+  authorizedPhone String?
+  relationship    String?
+  exitDate        DateTime
+  exitTime        DateTime?
+  returnTime      DateTime?
+  reason          String?
+  transportMethod String?
+  status          String    @default("pending")
+  approvedBy      String?
+  approvedAt      DateTime?
+  rejectionReason String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  student     Student @relation(fields: [studentId], references: [id])
+  requestedBy Parent  @relation(fields: [requestedById], references: [id])
+
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  studentId   String?
+  classId     String?
+  type        String
+  title       String
+  period      String?
+  content     Json?
+  fileUrl     String?
+  generatedBy String
+  isFinal     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  student Student? @relation(fields: [studentId], references: [id])
+
+}
+
+model NewsTarget {
+  newsId     String
+  targetType String
+  targetId   String
+
+  news News @relation(fields: [newsId], references: [id])
+
+  @@id([newsId, targetType, targetId])
+}
+
+model NewsRead {
+  newsId String
+  userId String
+  readAt DateTime @default(now())
+
+  news News @relation(fields: [newsId], references: [id])
+
+  @@id([newsId, userId])
+}
+
+model EventRegistration {
+  id             String    @id @default(uuid())
+  eventId        String
+  userId         String
+  studentId      String?
+  numberOfGuests Int       @default(0)
+  status         String    @default("registered")
+  notes          String?
+  registeredAt   DateTime  @default(now())
+  cancelledAt    DateTime?
+
+  event   Event    @relation(fields: [eventId], references: [id])
+  student Student? @relation(fields: [studentId], references: [id])
+  parent  Parent?  @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId, studentId])
+}
+
+model MessageRecipient {
+  messageId     String
+  recipientType String
+  recipientId   String
+  isRead        Boolean   @default(false)
+  readAt        DateTime?
+
+  message Message @relation(fields: [messageId], references: [id])
+
+  @@id([messageId, recipientType, recipientId])
+}

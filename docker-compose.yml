@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: coleapp-postgres
+    environment:
+      POSTGRES_USER: coleapp
+      POSTGRES_PASSWORD: coleapp123
+      POSTGRES_DB: coleapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - coleapp-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: coleapp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - coleapp-network
+
+networks:
+  coleapp-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
