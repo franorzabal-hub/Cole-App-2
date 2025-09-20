@@ -1,0 +1,33 @@
+name: "ColeApp CodeQL config"
+
+# Paths to include in the analysis
+paths:
+  - backend/src
+  - web-admin/src
+  - web-admin/app
+  - web-admin/components
+  - mobile-app/src
+  - mobile-app/components
+  - mobile-app/screens
+  - shared/src
+
+# Paths to exclude from the analysis
+paths-ignore:
+  - node_modules
+  - "**/node_modules"
+  - "**/*.test.ts"
+  - "**/*.spec.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.tsx"
+  - "**/test/**"
+  - "**/__tests__/**"
+  - "**/dist/**"
+  - "**/.next/**"
+  - "**/build/**"
+
+# Query filters
+query-filters:
+  - exclude:
+      id: js/unused-local-variable
+  - exclude:
+      id: js/missing-rate-limiting

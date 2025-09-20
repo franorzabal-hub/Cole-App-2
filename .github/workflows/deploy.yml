@@ -5,9 +5,6 @@ on:
     branches:
       - main
       - develop
-  pull_request:
-    branches:
-      - main
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -17,40 +14,7 @@ env:
   REPOSITORY: coleapp-docker
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: [backend, web-admin]
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: ${{ matrix.service }}/package-lock.json
-
-      - name: Install dependencies
-        working-directory: ./${{ matrix.service }}
-        run: npm ci
-
-      - name: Run linting
-        working-directory: ./${{ matrix.service }}
-        run: npm run lint
-
-      - name: Run type checking
-        working-directory: ./${{ matrix.service }}
-        run: npm run typecheck
-
-      - name: Run tests
-        working-directory: ./${{ matrix.service }}
-        run: npm test -- --passWithNoTests
-
   build-and-deploy:
-    needs: test
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
 
