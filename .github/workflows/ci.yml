@@ -30,7 +30,12 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ matrix.module }}
-        run: npm ci
+        run: |
+          if [ "${{ matrix.module }}" = "mobile-app" ]; then
+            npm ci --legacy-peer-deps
+          else
+            npm ci
+          fi
 
       - name: Run ESLint
         working-directory: ${{ matrix.module }}
@@ -60,7 +65,12 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ matrix.module }}
-        run: npm ci
+        run: |
+          if [ "${{ matrix.module }}" = "mobile-app" ]; then
+            npm ci --legacy-peer-deps
+          else
+            npm ci
+          fi
 
       - name: Run TypeScript check
         working-directory: ${{ matrix.module }}
@@ -86,7 +96,12 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ matrix.module }}
-        run: npm ci
+        run: |
+          if [ "${{ matrix.module }}" = "mobile-app" ]; then
+            npm ci --legacy-peer-deps
+          else
+            npm ci
+          fi
 
       - name: Run tests
         working-directory: ${{ matrix.module }}
@@ -113,7 +128,12 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ matrix.module }}
-        run: npm ci
+        run: |
+          if [ "${{ matrix.module }}" = "mobile-app" ]; then
+            npm ci --legacy-peer-deps
+          else
+            npm ci
+          fi
 
       - name: Build application
         working-directory: ${{ matrix.module }}
