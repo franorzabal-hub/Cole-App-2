@@ -1,0 +1,19 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+# Run lint-staged for code formatting and linting
+npx lint-staged
+
+# Run gitleaks for secret scanning
+if command -v gitleaks &> /dev/null
+then
+    echo "Running secret scanning with gitleaks..."
+    gitleaks detect --no-banner --verbose
+    if [ $? -ne 0 ]; then
+        echo "⚠️  Secret detected! Please remove sensitive data before committing."
+        exit 1
+    fi
+else
+    echo "⚠️  Gitleaks not installed. Skipping secret scanning."
+    echo "   Install with: brew install gitleaks"
+fi

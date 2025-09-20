@@ -1,8 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Inject, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as admin from 'firebase-admin';
 import { PrismaService } from '../prisma/prisma.service';
+import { TenantService } from '../tenant/tenant.service';
 
 @Injectable()
 export class AuthService {
@@ -12,6 +13,8 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    @Inject(forwardRef(() => TenantService))
+    private tenantService: TenantService,
   ) {
     // Initialize Firebase Admin - Skip in development mode
     const isDevelopment = this.configService.get('NODE_ENV') !== 'production';
@@ -116,12 +119,13 @@ export class AuthService {
   }
 
   /**
-   * Login with email and password (creates Firebase user)
+   * Login with email and password
    */
   async login(email: string, password: string) {
     try {
-      // This would typically be handled by Firebase Auth on the client
-      // Here we just validate the user exists
+      const isDevelopment = this.configService.get('NODE_ENV') !== 'production';
+
+      // Find user by email
       const user = await this.prisma.user.findUnique({
         where: { email },
         include: {
@@ -130,11 +134,36 @@ export class AuthService {
               role: true,
             },
           },
+          tenants: true,
         },
       });
 
       if (!user) {
         throw new UnauthorizedException('Invalid credentials');
+      }
+
+      // In development mode, check if password exists on user record
+      // If it does, validate it. Otherwise, accept any password for testing
+      if (isDevelopment) {
+        // Check if user has a password field (for users created via registerWithNewTenant)
+        const userWithPassword = await this.prisma.user.findUnique({
+          where: { id: user.id },
+          select: { password: true },
+        });
+
+        if (userWithPassword?.password) {
+          // Validate password using bcrypt
+          const bcrypt = await import('bcryptjs');
+          const isValidPassword = await bcrypt.compare(password, userWithPassword.password);
+
+          if (!isValidPassword) {
+            throw new UnauthorizedException('Invalid credentials');
+          }
+        }
+        // If no password stored, accept any password in development mode
+      } else {
+        // In production, would validate against Firebase
+        throw new UnauthorizedException('Production authentication not implemented');
       }
 
       // Update last login
@@ -147,13 +176,24 @@ export class AuthService {
         sub: user.id,
         email: user.email,
         roles: user.userRoles.map((ur) => ur.role.name),
+        tenantId: user.userRoles[0]?.tenantId || user.tenants[0]?.id,
+      };
+
+      // Add role and tenantId to user object for response
+      const userWithRole = {
+        ...user,
+        role: user.userRoles[0]?.role?.name || 'user',
+        tenantId: user.userRoles[0]?.tenantId || user.tenants[0]?.id,
       };
 
       return {
-        user,
+        user: userWithRole,
         accessToken: this.jwtService.sign(payload),
       };
     } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException('Invalid credentials');
     }
   }
@@ -283,5 +323,123 @@ export class AuthService {
         id: { in: tenantIds },
       },
     });
+  }
+
+  /**
+   * Register new user with new tenant (for school registration)
+   */
+  async registerWithNewTenant(data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone: string;
+    schoolName: string;
+    subdomain: string;
+    schoolWebsite?: string;
+  }) {
+    const isDevelopment = this.configService.get('NODE_ENV') !== 'production';
+
+    try {
+      // Check if subdomain is available
+      const existingTenant = await this.tenantService.findBySubdomain(data.subdomain);
+      if (existingTenant) {
+        throw new Error('El subdominio ya está en uso');
+      }
+
+      // Create tenant first
+      const tenant = await this.tenantService.createTenant({
+        name: data.schoolName,
+        subdomain: data.subdomain,
+        contactEmail: data.email,
+        contactPhone: data.phone,
+        website: data.schoolWebsite,
+      });
+
+      let firebaseUid = '';
+
+      // Create Firebase user or mock user depending on environment
+      if (isDevelopment) {
+        firebaseUid = `mock-${data.email}-${Date.now()}`;
+      } else {
+        try {
+          const firebaseUser = await admin.auth().createUser({
+            email: data.email,
+            password: data.password,
+            displayName: `${data.firstName} ${data.lastName}`,
+            phoneNumber: data.phone,
+          });
+          firebaseUid = firebaseUser.uid;
+        } catch (firebaseError) {
+          // If Firebase fails, continue with mock in development
+          if (isDevelopment) {
+            firebaseUid = `mock-${data.email}-${Date.now()}`;
+          } else {
+            throw firebaseError;
+          }
+        }
+      }
+
+      // Hash password for development mode
+      let hashedPassword: string | null = null;
+      if (isDevelopment) {
+        const bcrypt = await import('bcryptjs');
+        hashedPassword = await bcrypt.hash(data.password, 10);
+      }
+
+      // Create user in database
+      const user = await this.prisma.user.create({
+        data: {
+          firebaseUid,
+          email: data.email,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          phone: data.phone,
+          password: hashedPassword, // Store hashed password in development mode
+          emailVerifiedAt: isDevelopment ? new Date() : null,
+          isSuperAdmin: false,
+        },
+      });
+
+      // Create admin role if it doesn't exist
+      let adminRole = await this.prisma.role.findUnique({
+        where: { name: 'admin' },
+      });
+
+      if (!adminRole) {
+        adminRole = await this.prisma.role.create({
+          data: {
+            name: 'admin',
+            displayName: 'Administrador',
+            description: 'Administrator role with full permissions',
+          },
+        });
+      }
+
+      // Assign admin role to the user for this tenant
+      await this.prisma.userRole.create({
+        data: {
+          userId: user.id,
+          roleId: adminRole.id,
+          tenantId: tenant.id,
+        },
+      });
+
+      // Generate JWT token
+      const payload = {
+        sub: user.id,
+        email: user.email,
+        firebaseUid: user.firebaseUid,
+        tenantId: tenant.id,
+        role: 'admin',
+      };
+
+      return {
+        user,
+        accessToken: this.jwtService.sign(payload),
+      };
+    } catch (error) {
+      throw new Error(`Registration failed: ${error.message}`);
+    }
   }
 }

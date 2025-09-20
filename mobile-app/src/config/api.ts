@@ -52,6 +52,21 @@ class ApiClient {
   }
 
   /**
+   * Get authentication token
+   */
+  async getAuthToken(): Promise<string | null> {
+    if (this.authToken) {
+      return this.authToken;
+    }
+    // Try to load from storage if not in memory
+    const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+    if (token) {
+      this.authToken = token;
+    }
+    return this.authToken;
+  }
+
+  /**
    * Clear authentication
    */
   async clearAuth() {
@@ -761,6 +776,8 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
+  phone?: string;
+  dni?: string;
   roles: Role[];
 }
 

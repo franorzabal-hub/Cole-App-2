@@ -256,4 +256,81 @@ export class AuthService {
       return false;
     }
   }
+
+  // Compatibility methods for AuthContext
+
+  /**
+   * Get stored token (for compatibility with AuthContext)
+   */
+  static async getToken(): Promise<string | null> {
+    try {
+      return await apiClient.getAuthToken();
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Set auth token (for compatibility with AuthContext)
+   */
+  static async setToken(token: string): Promise<void> {
+    try {
+      await apiClient.setAuthToken(token);
+    } catch (error) {
+      console.error('Error setting token:', error);
+    }
+  }
+
+  /**
+   * Login method (for compatibility with AuthContext)
+   */
+  static async login(email: string, password: string): Promise<any> {
+    try {
+      const response = await this.signIn(email, password);
+      if (response.user && !response.error) {
+        // Get the token from apiClient after successful login
+        const token = await apiClient.getAuthToken();
+        return {
+          token,
+          user: response.user,
+        };
+      }
+      throw new Error(response.error || 'Login failed');
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Register method (for compatibility with AuthContext)
+   */
+  static async register(email: string, password: string, userData: any): Promise<any> {
+    try {
+      const response = await this.signUp(
+        email,
+        password,
+        userData.firstName || userData.displayName || email.split('@')[0],
+        userData.lastName || '',
+        userData.phone
+      );
+      if (response.user && !response.error) {
+        // Get the token from apiClient after successful registration
+        const token = await apiClient.getAuthToken();
+        return {
+          token,
+          user: response.user,
+        };
+      }
+      throw new Error(response.error || 'Registration failed');
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Logout method (for compatibility with AuthContext)
+   */
+  static async logout(): Promise<void> {
+    await this.signOut();
+  }
 }

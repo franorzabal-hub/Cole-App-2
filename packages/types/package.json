@@ -1,0 +1,20 @@
+{
+  "name": "@coleapp/types",
+  "version": "1.0.0",
+  "description": "Shared TypeScript type definitions for ColeApp",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "license": "MIT"
+}

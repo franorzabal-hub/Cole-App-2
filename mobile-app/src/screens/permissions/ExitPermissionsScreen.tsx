@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -9,19 +9,25 @@ import {
   TouchableOpacity,
   Dimensions,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es, enUS, pt, fr, it } from 'date-fns/locale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IOSHeader from '@/components/IOSHeader';
 import FilterChip from '@/components/ui/FilterChip';
 import { tokens } from '@/theme/tokens';
+import { ExitsService } from '@/services/exits.service';
+import { AuthService } from '@/services/auth.service';
+import { ExitPermission as BackendExitPermission, Student } from '@/config/api';
+import { CardSkeletonList } from '@/components/ui/Skeleton';
 
 const { width } = Dimensions.get('window');
 
+// Adapter interface to match the existing ExitPermissionsScreen expectations
 interface ExitPermission {
   id: string;
   studentName: string;
@@ -39,70 +45,15 @@ interface ExitPermission {
   isRead?: boolean;
 }
 
-const mockPermissions: ExitPermission[] = [
-  {
-    id: '1',
-    studentName: 'Juan Pérez',
-    studentId: '1',
-    grade: '3er Grado B',
-    requestDate: new Date(Date.now() - 86400000),
-    exitDate: new Date(Date.now() + 86400000),
-    exitTime: '14:00',
-    returnTime: '16:00',
-    authorizedPerson: 'María Pérez',
-    authorizedPersonDNI: '12345678',
-    reason: 'Cita médica',
-    status: 'approved',
-    isRead: true,
-  },
-  {
-    id: '2',
-    studentName: 'María Pérez',
-    studentId: '2',
-    grade: '5to Grado A',
-    requestDate: new Date(),
-    exitDate: new Date(Date.now() + 172800000),
-    exitTime: '11:30',
-    authorizedPerson: 'Carlos García',
-    authorizedPersonDNI: '87654321',
-    reason: 'Trámite familiar urgente',
-    status: 'pending',
-    isRead: false,
-  },
-  {
-    id: '3',
-    studentName: 'Luis Rodríguez',
-    grade: '2do Grado C',
-    requestDate: new Date(Date.now() - 172800000),
-    exitDate: new Date(Date.now() - 86400000),
-    exitTime: '15:00',
-    authorizedPerson: 'Ana Rodríguez',
-    authorizedPersonDNI: '11223344',
-    reason: 'Viaje familiar',
-    status: 'rejected',
-    comments: 'No se presentó documentación requerida',
-  },
-  {
-    id: '4',
-    studentName: 'María López',
-    grade: '4to Grado B',
-    requestDate: new Date(Date.now() - 259200000),
-    exitDate: new Date(Date.now() - 172800000),
-    exitTime: '12:00',
-    returnTime: '14:30',
-    authorizedPerson: 'Pedro López',
-    authorizedPersonDNI: '44556677',
-    reason: 'Cita con especialista',
-    status: 'approved',
-  },
-];
-
 export default function ExitPermissionsScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [permissions, setPermissions] = useState<ExitPermission[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
 
   // Get the appropriate date locale based on current language
   const getDateLocale = () => {
@@ -115,31 +66,101 @@ export default function ExitPermissionsScreen() {
     }
   };
 
-  const filters = [
-    { key: 'all', label: t('common.all'), icon: 'filter-list' },
-    { key: 'unread', label: t('messages.unread'), icon: 'markunread' },
-    { key: 'student-1', label: 'Juan Pérez', icon: 'face' },
-    { key: 'student-2', label: 'María Pérez', icon: 'face' },
-  ];
+  // Transform backend exit permission to screen format
+  const transformExitPermission = (backendPermission: BackendExitPermission): ExitPermission => {
+    const createdDate = parseISO(backendPermission.createdAt);
+    const exitDate = parseISO(backendPermission.exitDate);
+
+    return {
+      id: backendPermission.id,
+      studentName: `${backendPermission.student.firstName} ${backendPermission.student.lastName}`,
+      studentId: backendPermission.student.id,
+      grade: backendPermission.student.grade || t('profile.noGradeInfo'),
+      requestDate: createdDate,
+      exitDate: exitDate,
+      exitTime: backendPermission.exitTime || '',
+      returnTime: backendPermission.returnTime || undefined,
+      authorizedPerson: backendPermission.authorizedPersonName,
+      authorizedPersonDNI: backendPermission.authorizedPersonDocument || '',
+      reason: backendPermission.reason || '',
+      status: backendPermission.status as 'pending' | 'approved' | 'rejected',
+      comments: undefined, // Backend doesn't provide comments field yet
+      isRead: true, // Default to read for now
+    };
+  };
+
+  // Load exit permissions from the backend
+  const loadExitPermissions = async () => {
+    try {
+      setLoading(true);
+      const backendPermissions = await ExitsService.getExitPermissions('all');
+
+      // Transform backend permissions to match the screen's expected format
+      const transformedPermissions = backendPermissions.map(transformExitPermission);
+
+      setPermissions(transformedPermissions);
+    } catch (error) {
+      console.error('Error loading exit permissions:', error);
+      // Fall back to empty array on error
+      setPermissions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load students for filtering
+  const loadStudents = async () => {
+    try {
+      const userChildren = await AuthService.getUserChildren();
+      setStudents(userChildren);
+    } catch (error) {
+      console.error('Error loading students:', error);
+      setStudents([]);
+    }
+  };
+
+  useEffect(() => {
+    loadExitPermissions();
+    loadStudents();
+  }, []);
+
+  const filters = useMemo(() => {
+    const baseFilters = [
+      { key: 'all', label: t('common.all'), icon: 'filter-list' },
+      { key: 'pending', label: t('permissions.status.pending'), icon: 'schedule' },
+      { key: 'approved', label: t('permissions.status.approved'), icon: 'check-circle' },
+      { key: 'rejected', label: t('permissions.status.rejected'), icon: 'cancel' },
+    ];
+
+    // Add student filters if we have students
+    const studentFilters = students.map(student => ({
+      key: `student-${student.id}`,
+      label: `${student.firstName} ${student.lastName}`,
+      icon: 'face' as const
+    }));
+
+    return [...baseFilters, ...studentFilters];
+  }, [students, t]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 2000);
+    await loadExitPermissions();
+    setRefreshing(false);
   };
 
   const filteredPermissions = useMemo(() => {
-    if (selectedFilter === 'all') return mockPermissions;
-    if (selectedFilter === 'unread') return mockPermissions.filter(p => !p.isRead);
+    if (selectedFilter === 'all') return permissions;
+    if (selectedFilter === 'pending') return permissions.filter(p => p.status === 'pending');
+    if (selectedFilter === 'approved') return permissions.filter(p => p.status === 'approved');
+    if (selectedFilter === 'rejected') return permissions.filter(p => p.status === 'rejected');
     if (selectedFilter.startsWith('student-')) {
       const studentId = selectedFilter.split('-')[1];
-      return mockPermissions.filter(p => p.studentId === studentId);
+      return permissions.filter(p => p.studentId === studentId);
     }
-    return mockPermissions;
-  }, [selectedFilter]);
+    return permissions;
+  }, [selectedFilter, permissions]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -227,6 +248,14 @@ export default function ExitPermissionsScreen() {
     </TouchableOpacity>
   );
 
+  if (loading && !refreshing) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={tokens.color.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Fixed Header Bar */}
@@ -269,18 +298,14 @@ export default function ExitPermissionsScreen() {
           </>
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Icon name="assignment" size={64} color="#C7C7CC" />
-            <Text style={styles.emptyText}>{t('permissions.empty')}</Text>
-            <TouchableOpacity
-              style={styles.fab}
-              onPress={() => navigation.navigate('CreateExitPermission' as never)}
-              accessibilityRole="button"
-              accessibilityLabel={t('permissions.create')}
-            >
-              <Icon name="add" size={24} color="#fff" />
-            </TouchableOpacity>
-          </View>
+          refreshing ? (
+            <CardSkeletonList />
+          ) : (
+            <View style={styles.emptyContainer}>
+              <Icon name="assignment" size={64} color="#C7C7CC" />
+              <Text style={styles.emptyText}>{t('permissions.empty')}</Text>
+            </View>
+          )
         }
       />
 
@@ -300,6 +325,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: tokens.color.gray50,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,

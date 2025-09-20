@@ -12,16 +12,22 @@ import {
   Alert,
   Share,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es, enUS, pt, fr, it } from 'date-fns/locale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IOSHeader from '@/components/IOSHeader';
 import { tokens } from '@/theme/tokens';
 import { showToast } from '@/utils/toast';
+import { EventsService } from '@/services/events.service';
+import { Event } from '@/config/api';
+import { RootStackParamList } from '@/navigation/AppNavigator';
+
+type EventDetailScreenRouteProp = RouteProp<RootStackParamList, 'EventDetail'>;
 
 interface Attendee {
   id: string;
@@ -30,12 +36,41 @@ interface Attendee {
   type: 'student' | 'parent' | 'teacher';
 }
 
+// Adapter interface to match the existing EventDetailScreen expectations
+interface EventDetailItem {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  date: Date;
+  time: string;
+  category: string;
+  imageUrl?: string;
+  attendees: number;
+  maxAttendees: number;
+  isRegistered: boolean;
+  organizer: string;
+  organizerEmail: string;
+  organizerPhone?: string;
+  requirements?: string;
+  price?: string;
+}
+
 export default function EventDetailScreen() {
   const navigation = useNavigation();
-  const route = useRoute();
+  const route = useRoute<EventDetailScreenRouteProp>();
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   const scrollY = useRef(new Animated.Value(0)).current;
+
+  const [event, setEvent] = useState<EventDetailItem | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [attendeesModalVisible, setAttendeesModalVisible] = useState(false);
+  const [currentAttendees, setCurrentAttendees] = useState(0);
+
+  const { eventId } = route.params || {};
 
   // Get the appropriate date locale based on current language
   const getDateLocale = () => {
@@ -48,28 +83,65 @@ export default function EventDetailScreen() {
     }
   };
 
-  const event = (route.params as any)?.event || {
-    id: '1',
-    title: 'Festival de Primavera',
-    description: 'Gran festival con actividades para toda la familia. Habrá juegos, comida, música en vivo y muchas sorpresas más. No te pierdas esta celebración especial donde toda la comunidad escolar se reúne para disfrutar de un día inolvidable.',
-    location: 'Patio Principal',
-    date: new Date(Date.now() + 86400000 * 7),
-    time: '10:00 - 18:00',
-    category: 'Festival',
-    imageUrl: 'https://via.placeholder.com/400x250',
-    attendees: 45,
-    maxAttendees: 100,
-    isRegistered: false,
-    organizer: 'Asociación de Padres',
-    organizerEmail: 'eventos@colegio.edu',
-    organizerPhone: '+54 11 1234-5678',
-    requirements: 'Traer manta para sentarse, protector solar',
-    price: 'Entrada libre',
+  useEffect(() => {
+    if (eventId) {
+      loadEventDetail();
+    } else {
+      setError(t('events.eventNotFound'));
+      setLoading(false);
+    }
+  }, [eventId]);
+
+  // Transform backend event to match the screen's expected format
+  const transformEvent = (backendEvent: Event): EventDetailItem => {
+    const startDate = parseISO(backendEvent.startDate);
+    const endDate = backendEvent.endDate ? parseISO(backendEvent.endDate) : null;
+
+    const timeString = endDate
+      ? `${format(startDate, 'HH:mm')} - ${format(endDate, 'HH:mm')}`
+      : format(startDate, 'HH:mm');
+
+    return {
+      id: backendEvent.id,
+      title: backendEvent.title,
+      description: backendEvent.description,
+      location: backendEvent.location || t('events.noLocation'),
+      date: startDate,
+      time: timeString,
+      category: backendEvent.category || t('events.general'),
+      imageUrl: undefined, // Backend doesn't provide images yet
+      attendees: 0, // Backend doesn't provide attendee count yet
+      maxAttendees: 100, // Default max attendees
+      isRegistered: backendEvent.isRegistered || false,
+      organizer: t('events.schoolAdmin'),
+      organizerEmail: 'eventos@colegio.edu',
+      organizerPhone: undefined,
+      requirements: backendEvent.requirements,
+      price: t('events.freeEntry'),
+    };
   };
 
-  const [isRegistered, setIsRegistered] = useState(event.isRegistered);
-  const [attendeesModalVisible, setAttendeesModalVisible] = useState(false);
-  const [currentAttendees, setCurrentAttendees] = useState(event.attendees);
+  const loadEventDetail = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const backendEvent = await EventsService.getEventById(eventId!);
+      if (backendEvent) {
+        const transformedEvent = transformEvent(backendEvent);
+        setEvent(transformedEvent);
+        setIsRegistered(transformedEvent.isRegistered);
+        setCurrentAttendees(transformedEvent.attendees);
+      } else {
+        setError(t('events.eventNotFound'));
+      }
+    } catch (err) {
+      console.error('Error loading event detail:', err);
+      setError(t('common.error'));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const mockAttendees: Attendee[] = [
     { id: '1', name: 'María García', type: 'parent' },
@@ -94,36 +166,58 @@ export default function EventDetailScreen() {
     }
   };
 
-  const handleAttendanceToggle = () => {
+  const handleAttendanceToggle = async () => {
+    if (!event) return;
+
     if (isRegistered) {
       Alert.alert(
-        'Cancelar Asistencia',
-        '¿Estás seguro de que deseas cancelar tu asistencia a este evento?',
+        t('events.cancelAttendance'),
+        t('events.cancelAttendanceConfirm'),
         [
-          { text: 'No', style: 'cancel' },
+          { text: t('common.no'), style: 'cancel' },
           {
-            text: 'Sí, cancelar',
+            text: t('common.yes'),
             style: 'destructive',
-            onPress: () => {
-              setIsRegistered(false);
-              setCurrentAttendees(prev => Math.max(0, prev - 1));
-              showToast('Tu asistencia ha sido cancelada');
+            onPress: async () => {
+              try {
+                const success = await EventsService.cancelRegistration(event.id);
+                if (success) {
+                  setIsRegistered(false);
+                  setCurrentAttendees(prev => Math.max(0, prev - 1));
+                  showToast(t('events.attendanceCanceled'), 'success');
+                } else {
+                  showToast(t('common.error'), 'error');
+                }
+              } catch (error) {
+                console.error('Error canceling registration:', error);
+                showToast(t('common.error'), 'error');
+              }
             },
           },
         ]
       );
     } else {
       Alert.alert(
-        'Confirmar Asistencia',
-        '¿Deseas confirmar tu asistencia a este evento?',
+        t('events.confirmAttendance'),
+        t('events.confirmAttendanceMessage'),
         [
-          { text: 'Cancelar', style: 'cancel' },
+          { text: t('common.cancel'), style: 'cancel' },
           {
-            text: 'Confirmar',
-            onPress: () => {
-              setIsRegistered(true);
-              setCurrentAttendees(prev => Math.min(event.maxAttendees, prev + 1));
-              showToast('Tu asistencia ha sido confirmada');
+            text: t('common.confirm'),
+            onPress: async () => {
+              try {
+                const success = await EventsService.registerForEvent(event.id);
+                if (success) {
+                  setIsRegistered(true);
+                  setCurrentAttendees(prev => Math.min(event.maxAttendees, prev + 1));
+                  showToast(t('events.attendanceConfirmed'), 'success');
+                } else {
+                  showToast(t('common.error'), 'error');
+                }
+              } catch (error) {
+                console.error('Error registering for event:', error);
+                showToast(t('common.error'), 'error');
+              }
             },
           },
         ]
@@ -132,10 +226,12 @@ export default function EventDetailScreen() {
   };
 
   const handleShare = async () => {
+    if (!event) return;
+
     try {
       await Share.share({
         title: event.title,
-        message: `${event.title}\n${format(event.date, "d 'de' MMMM", { locale: es })} - ${event.time}\n${event.location}\n\n${event.description}`,
+        message: `${event.title}\n${format(event.date, "d 'de' MMMM", { locale: getDateLocale() })} - ${event.time}\n${event.location}\n\n${event.description}`,
       });
     } catch (error) {
       console.error('Error sharing:', error);
@@ -143,7 +239,13 @@ export default function EventDetailScreen() {
   };
 
   const handleAddToCalendar = () => {
-    Alert.alert('Agregar al Calendario', 'El evento ha sido agregado a tu calendario');
+    Alert.alert(t('events.addToCalendar'), t('events.addedToCalendar'));
+  };
+
+  const handleRefresh = () => {
+    if (eventId) {
+      loadEventDetail();
+    }
   };
 
   const renderAttendee = ({ item }: { item: Attendee }) => (
@@ -163,6 +265,44 @@ export default function EventDetailScreen() {
       </View>
     </View>
   );
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <IOSHeader
+          title={t('events.eventDetail')}
+          scrollY={scrollY}
+          showBackButton
+          onBackPress={() => navigation.goBack()}
+        />
+        <View style={[styles.loadingContainer, { paddingTop: insets.top + 44 }]}>
+          <ActivityIndicator size="large" color={tokens.color.primary} />
+          <Text style={styles.loadingText}>{t('common.loading')}</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (error || !event) {
+    return (
+      <View style={styles.container}>
+        <IOSHeader
+          title={t('events.eventDetail')}
+          scrollY={scrollY}
+          showBackButton
+          onBackPress={() => navigation.goBack()}
+        />
+        <View style={[styles.errorContainer, { paddingTop: insets.top + 44 }]}>
+          <Icon name="error-outline" size={64} color={tokens.color.gray400} />
+          <Text style={styles.errorText}>{error || t('events.eventNotFound')}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+            <Icon name="refresh" size={20} color={tokens.color.white} />
+            <Text style={styles.retryButtonText}>{t('common.retry')}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -262,12 +402,12 @@ export default function EventDetailScreen() {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Organizador</Text>
+            <Text style={styles.sectionTitle}>{t('events.organizer')}</Text>
             <View style={styles.organizerCard}>
               <Icon name="business" size={24} color={tokens.color.primary} />
               <View style={styles.organizerInfo}>
                 <Text style={styles.organizerName}>{event.organizer}</Text>
-                <TouchableOpacity onPress={() => Alert.alert('Contactar', `Email: ${event.organizerEmail}`)}>
+                <TouchableOpacity onPress={() => Alert.alert(t('events.contact'), `Email: ${event.organizerEmail}`)}>
                   <Text style={styles.organizerContact}>{event.organizerEmail}</Text>
                 </TouchableOpacity>
                 {event.organizerPhone && (
@@ -345,6 +485,43 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: tokens.color.textSecondary,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  errorText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: tokens.color.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  retryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: tokens.color.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: tokens.color.white,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
   },
   headerImage: {
     width: '100%',
