@@ -128,6 +128,14 @@ input CreateStudentDto {
   studentCode: String
 }
 
+input CreateTenantInput {
+  contactEmail: String
+  contactPhone: String
+  name: String!
+  subdomain: String!
+  website: String
+}
+
 """
 A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
 """
@@ -265,6 +273,7 @@ type Mutation {
   createNews(input: CreateNewsInput!, tenantId: String!): News!
   createReport(input: CreateReportDto!, tenantId: String!): Report!
   createStudent(input: CreateStudentDto!, tenantId: String!): Student!
+  createTenant(input: CreateTenantInput!): Tenant!
   deleteEvent(id: String!, tenantId: String!): Boolean!
   deleteExitPermission(id: String!, tenantId: String!): Boolean!
   deleteFamilyRelationship(id: String!, tenantId: String!): Boolean!
@@ -279,6 +288,7 @@ type Mutation {
   markReportAsFinal(id: String!, tenantId: String!): Report!
   register(input: RegisterInput!): AuthPayload!
   registerForEvent(input: CreateEventRegistrationDto!, tenantId: String!): EventRegistration!
+  registerWithTenant(input: RegisterWithTenantInput!): AuthPayload!
   replyToMessage(content: String!, parentMessageId: String!, tenantId: String!): Message!
   updateEvent(id: String!, input: UpdateEventDto!, tenantId: String!): Event!
   updateEventRegistration(input: UpdateEventRegistrationDto!, registrationId: String!, tenantId: String!): EventRegistration!
@@ -311,6 +321,7 @@ type News {
 }
 
 type Query {
+  checkSubdomainAvailability(subdomain: String!): Boolean!
   classReports(classId: String!, tenantId: String!): [Report!]!
   event(id: String!, tenantId: String!): Event
   eventRegistrations(eventId: String!, tenantId: String!): [EventRegistration!]!
@@ -337,6 +348,10 @@ type Query {
   studentStatistics(campusId: String, tenantId: String!): StudentStatistics!
   studentSummaryReport(period: String, studentId: String!, tenantId: String!): StudentSummaryReport!
   students(academicYear: Int, campusId: String, gradeLevel: String, search: String, section: String, skip: Int, status: String, take: Int, tenantId: String!): [Student!]!
+  tenant(id: String!): Tenant
+  tenantBySubdomain(subdomain: String!): Tenant
+  tenantStats(tenantId: String!): TenantStats!
+  tenants: [Tenant!]!
   unreadMessageCount(tenantId: String!): Int!
   unreadNewsCount(tenantId: String!): Float!
   userEventRegistrations(tenantId: String!): [EventRegistration!]!
@@ -349,6 +364,17 @@ input RegisterInput {
   password: String!
   role: String! = "parent"
   tenantId: String!
+}
+
+input RegisterWithTenantInput {
+  email: String!
+  firstName: String!
+  lastName: String!
+  password: String!
+  phone: String!
+  schoolName: String!
+  schoolWebsite: String
+  subdomain: String!
 }
 
 type Report {
@@ -414,6 +440,31 @@ type StudentSummaryReport {
   reportsByType: String!
   student: String!
   totalReports: Int!
+}
+
+type Tenant {
+  contactEmail: String
+  contactPhone: String
+  createdAt: DateTime!
+  id: String!
+  isActive: Boolean!
+  logoUrl: String
+  name: String!
+  primaryColor: String
+  schemaName: String!
+  secondaryColor: String
+  subdomain: String!
+  updatedAt: DateTime!
+  website: String
+}
+
+type TenantStats {
+  events: Float!
+  news: Float!
+  parents: Float!
+  students: Float!
+  teachers: Float!
+  users: Float!
 }
 
 input UpdateEventDto {
@@ -532,5 +583,7 @@ type User {
   lastName: String!
   phone: String
   photoUrl: String
+  role: String
+  tenantId: String
   updatedAt: DateTime!
 }

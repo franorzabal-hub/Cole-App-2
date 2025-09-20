@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -9,19 +9,25 @@ import {
   TouchableOpacity,
   Dimensions,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es, enUS, pt, fr, it } from 'date-fns/locale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IOSHeader from '@/components/IOSHeader';
 import { tokens } from '@/theme/tokens';
+import { ReportsService } from '@/services/reports.service';
+import { AuthService } from '@/services/auth.service';
+import { Report } from '@/config/api';
+import { showToast } from '@/utils/toast';
 
 const { width } = Dimensions.get('window');
 
-interface Report {
+// Adapter interface to match the existing ReportsScreen expectations
+interface ReportItem {
   id: string;
   title: string;
   type: 'bulletin' | 'attendance' | 'behavior' | 'medical' | 'progress';
@@ -36,71 +42,12 @@ interface Report {
   isRead?: boolean;
 }
 
-const mockReports: Report[] = [
-  {
-    id: '1',
-    title: 'Boletín de Calificaciones - 1er Trimestre',
-    type: 'bulletin',
-    studentName: 'Juan Pérez',
-    studentId: '1',
-    grade: '3er Grado B',
-    period: '1er Trimestre 2024',
-    date: new Date(Date.now() - 604800000),
-    status: 'available',
-    downloadUrl: '#',
-    summary: 'Promedio General: 8.5',
-    isRead: false,
-  },
-  {
-    id: '2',
-    title: 'Informe de Asistencia - Marzo',
-    type: 'attendance',
-    studentName: 'Juan Pérez',
-    grade: '3er Grado B',
-    period: 'Marzo 2024',
-    date: new Date(Date.now() - 259200000),
-    status: 'available',
-    downloadUrl: '#',
-    summary: 'Asistencia: 95% (19/20 días)',
-  },
-  {
-    id: '3',
-    title: 'Reporte de Comportamiento',
-    type: 'behavior',
-    studentName: 'María Pérez',
-    studentId: '2',
-    grade: '5to Grado A',
-    period: 'Marzo 2024',
-    date: new Date(Date.now() - 86400000),
-    status: 'pending',
-    summary: 'En proceso de evaluación',
-    isRead: false,
-  },
-  {
-    id: '4',
-    title: 'Informe Médico - Control Anual',
-    type: 'medical',
-    studentName: 'Luis Rodríguez',
-    grade: '2do Grado C',
-    period: '2024',
-    date: new Date(Date.now() - 1209600000),
-    status: 'available',
-    downloadUrl: '#',
-    summary: 'Estado de salud: Óptimo',
-  },
-  {
-    id: '5',
-    title: 'Reporte de Progreso Académico',
-    type: 'progress',
-    studentName: 'María López',
-    grade: '4to Grado B',
-    period: 'Febrero 2024',
-    date: new Date(Date.now() - 2592000000),
-    status: 'available',
-    downloadUrl: '#',
-    summary: 'Mejora significativa en matemáticas',
-  },
-];
+interface Student {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
 
 export default function ReportsScreen() {
   const navigation = useNavigation();
@@ -108,6 +55,9 @@ export default function ReportsScreen() {
   const { t, i18n } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [reports, setReports] = useState<ReportItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [students, setStudents] = useState<Student[]>([]);
 
   // Get the appropriate date locale based on current language
   const getDateLocale = () => {
@@ -120,31 +70,149 @@ export default function ReportsScreen() {
     }
   };
 
-  const filters = [
-    { key: 'all', label: t('common.all'), icon: 'filter-list' },
-    { key: 'unread', label: t('messages.unread'), icon: 'markunread' },
-    { key: 'student-1', label: 'Juan Pérez', icon: 'face' },
-    { key: 'student-2', label: 'María Pérez', icon: 'face' },
-  ];
+  const filters = useMemo(() => {
+    const baseFilters = [
+      { key: 'all', label: t('common.all'), icon: 'filter-list' },
+      { key: 'unread', label: t('messages.unread'), icon: 'markunread' },
+    ];
+
+    const studentFilters = students.map(student => ({
+      key: `student-${student.id}`,
+      label: `${student.firstName} ${student.lastName}`,
+      icon: 'face',
+    }));
+
+    return [...baseFilters, ...studentFilters];
+  }, [students, t]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const onRefresh = () => {
+  useEffect(() => {
+    loadInitialData();
+  }, []);
+
+  // Transform backend report to match the screen's expected format
+  const transformReport = (backendReport: Report, student?: Student): ReportItem => {
+    const reportDate = parseISO(backendReport.createdAt);
+
+    return {
+      id: backendReport.id,
+      title: generateReportTitle(backendReport),
+      type: mapReportType(backendReport.type),
+      studentName: student ? `${student.firstName} ${student.lastName}` : t('reports.unknownStudent'),
+      studentId: backendReport.studentId,
+      grade: student?.grade || t('reports.unknownGrade'),
+      period: backendReport.period || t('reports.currentPeriod'),
+      date: reportDate,
+      status: mapReportStatus(backendReport.status),
+      downloadUrl: backendReport.fileUrl,
+      summary: backendReport.summary,
+      isRead: true, // Backend doesn't track read status yet
+    };
+  };
+
+  const generateReportTitle = (report: Report): string => {
+    switch (report.type) {
+      case 'grade_report':
+        return t('reports.gradeReport');
+      case 'attendance_report':
+        return t('reports.attendanceReport');
+      case 'behavior_report':
+        return t('reports.behaviorReport');
+      case 'general_report':
+      default:
+        return t('reports.generalReport');
+    }
+  };
+
+  const mapReportType = (backendType: string): ReportItem['type'] => {
+    switch (backendType) {
+      case 'grade_report':
+        return 'bulletin';
+      case 'attendance_report':
+        return 'attendance';
+      case 'behavior_report':
+        return 'behavior';
+      case 'general_report':
+      default:
+        return 'progress';
+    }
+  };
+
+  const mapReportStatus = (backendStatus: string): ReportItem['status'] => {
+    switch (backendStatus) {
+      case 'published':
+        return 'available';
+      case 'draft':
+        return 'draft';
+      case 'pending':
+      default:
+        return 'pending';
+    }
+  };
+
+  const loadInitialData = async () => {
+    try {
+      setLoading(true);
+      await Promise.all([loadStudents(), loadReports()]);
+    } catch (error) {
+      console.error('Error loading initial data:', error);
+      showToast(t('common.error'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStudents = async () => {
+    try {
+      const children = await AuthService.getUserChildren();
+      setStudents(children);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    }
+  };
+
+  const loadReports = async () => {
+    try {
+      const backendReports = await ReportsService.getReports();
+      const children = await AuthService.getUserChildren();
+
+      // Create a map of students for quick lookup
+      const studentMap = new Map(children.map(student => [student.id, student]));
+
+      // Transform backend reports to match screen format
+      const transformedReports = backendReports.map(report =>
+        transformReport(report, studentMap.get(report.studentId))
+      );
+
+      setReports(transformedReports);
+    } catch (error) {
+      console.error('Error loading reports:', error);
+      showToast(t('common.error'), 'error');
+    }
+  };
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
+    try {
+      await loadReports();
+    } catch (error) {
+      console.error('Error refreshing reports:', error);
+      showToast(t('common.error'), 'error');
+    } finally {
       setRefreshing(false);
-    }, 2000);
+    }
   };
 
   const filteredReports = useMemo(() => {
-    if (selectedFilter === 'all') return mockReports;
-    if (selectedFilter === 'unread') return mockReports.filter(report => !report.isRead);
+    if (selectedFilter === 'all') return reports;
+    if (selectedFilter === 'unread') return reports.filter(report => !report.isRead);
     if (selectedFilter.startsWith('student-')) {
       const studentId = selectedFilter.split('-')[1];
-      return mockReports.filter(report => report.studentId === studentId);
+      return reports.filter(report => report.studentId === studentId);
     }
-    return mockReports;
-  }, [selectedFilter]);
+    return reports;
+  }, [selectedFilter, reports]);
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -180,7 +248,23 @@ export default function ReportsScreen() {
     }
   };
 
-  const renderReportCard = (report: Report) => (
+  const handleDownloadReport = async (reportId: string) => {
+    try {
+      const fileUrl = await ReportsService.downloadReport(reportId);
+      if (fileUrl) {
+        // Here you would implement the actual file download
+        // For now, just show a success message
+        showToast(t('reports.downloadStarted'), 'success');
+      } else {
+        showToast(t('reports.downloadFailed'), 'error');
+      }
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      showToast(t('reports.downloadFailed'), 'error');
+    }
+  };
+
+  const renderReportCard = (report: ReportItem) => (
     <TouchableOpacity
       key={report.id}
       style={styles.card}
@@ -208,7 +292,10 @@ export default function ReportsScreen() {
             </Text>
 
             {report.status === 'available' && report.downloadUrl && (
-              <TouchableOpacity style={styles.downloadButton}>
+              <TouchableOpacity
+                style={styles.downloadButton}
+                onPress={() => handleDownloadReport(report.id)}
+              >
                 <Icon name="download" size={18} color={tokens.color.primary} />
                 <Text style={styles.downloadText}>{t('reports.download')}</Text>
               </TouchableOpacity>
@@ -229,7 +316,14 @@ export default function ReportsScreen() {
     <View style={styles.container}>
       {/* Fixed Header Bar */}
       <IOSHeader title={t('reports.title')} scrollY={scrollY} />
-      <Animated.FlatList
+
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={tokens.color.primary} />
+          <Text style={styles.loadingText}>{t('common.loading')}</Text>
+        </View>
+      ) : (
+        <Animated.FlatList
         data={filteredReports}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => renderReportCard(item)}
@@ -281,22 +375,14 @@ export default function ReportsScreen() {
             </ScrollView>
           </>
         }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Icon name="folder-open" size={64} color="#C7C7CC" />
-            <Text style={styles.emptyText}>{t('reports.empty')}</Text>
-            <TouchableOpacity
-              style={styles.reloadButton}
-              onPress={onRefresh}
-              accessibilityRole="button"
-              accessibilityLabel={t('reports.refresh')}
-            >
-              <Icon name="refresh" size={18} color="#fff" />
-              <Text style={styles.reloadButtonText}>{t('reports.refresh')}</Text>
-            </TouchableOpacity>
-          </View>
-        }
-      />
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Icon name="folder-open" size={64} color="#C7C7CC" />
+              <Text style={styles.emptyText}>{t('reports.empty')}</Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
@@ -438,6 +524,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#856404',
     fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 100,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: tokens.color.textSecondary,
   },
   emptyContainer: {
     flex: 1,

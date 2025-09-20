@@ -37,6 +37,12 @@ export class User {
 
   @Field()
   updatedAt: Date;
+
+  @Field(() => String, { nullable: true })
+  role?: string;
+
+  @Field(() => String, { nullable: true })
+  tenantId?: string;
 }
 
 @ObjectType()
@@ -79,6 +85,33 @@ export class RegisterInput {
 }
 
 @InputType()
+export class RegisterWithTenantInput {
+  @Field()
+  email: string;
+
+  @Field()
+  password: string;
+
+  @Field()
+  firstName: string;
+
+  @Field()
+  lastName: string;
+
+  @Field()
+  phone: string;
+
+  @Field()
+  schoolName: string;
+
+  @Field()
+  subdomain: string;
+
+  @Field({ nullable: true })
+  schoolWebsite?: string;
+}
+
+@InputType()
 export class FirebaseAuthInput {
   @Field()
   idToken: string;
@@ -99,6 +132,11 @@ export class AuthResolver {
   }
 
   @Mutation(() => AuthPayload)
+  async registerWithTenant(@Args('input') input: RegisterWithTenantInput) {
+    return this.authService.registerWithNewTenant(input);
+  }
+
+  @Mutation(() => AuthPayload)
   async loginWithFirebase(@Args('input') input: FirebaseAuthInput) {
     return this.authService.validateFirebaseToken(input.idToken);
   }
@@ -109,7 +147,17 @@ export class AuthResolver {
     const userId = context.req?.user?.sub;
     if (!userId) return null;
 
-    return this.authService.getUserById(userId);
+    const user = await this.authService.getUserById(userId);
+    if (!user) return null;
+
+    // Add role and tenantId from the first userRole if available
+    const result: any = {
+      ...user,
+      role: user.userRoles?.[0]?.role?.name || 'user',
+      tenantId: user.userRoles?.[0]?.tenantId || user.tenants?.[0]?.id,
+    };
+
+    return result;
   }
 
   @Query(() => [String])

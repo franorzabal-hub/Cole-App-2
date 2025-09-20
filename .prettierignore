@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Production
+build/
+dist/
+.next/
+out/
+
+# Testing
+coverage/
+
+# Misc
+.git/
+.gitignore
+.DS_Store
+
+# Generated files
+*.min.js
+*.min.css
+generated/
+
+# Specific file types
+*.md
+*.json
+*.yaml
+*.yml
+
+# Mobile
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Environment
+.env*
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+temp/

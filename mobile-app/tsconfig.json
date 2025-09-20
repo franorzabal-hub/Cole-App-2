@@ -1,24 +1,14 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": ["expo/tsconfig.base", "../tsconfig.base.json"],
   "compilerOptions": {
-    "strict": false,
     "target": "esnext",
     "module": "esnext",
     "lib": ["es2021"],
     "jsx": "react-native",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noImplicitAny": false,
-    "strictNullChecks": false,
-    "strictFunctionTypes": false,
-    "noImplicitThis": false,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noImplicitReturns": false,
-    "noFallthroughCasesInSwitch": false,
     "forceConsistentCasingInFileNames": true,
     "baseUrl": "./",
     "paths": {
@@ -32,8 +22,18 @@
       "@hooks/*": ["src/hooks/*"],
       "@assets/*": ["src/assets/*"],
       "@types/*": ["src/types/*"],
-      "@constants/*": ["src/constants/*"]
-    }
+      "@constants/*": ["src/constants/*"],
+      "@coleapp/types": ["../packages/types/src"],
+      "@coleapp/utils": ["../packages/utils/src"]
+    },
+
+    /* Override strict settings for gradual migration */
+    "strict": false,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "noImplicitAny": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
   },
   "include": ["src/**/*", "index.js"],
   "exclude": ["node_modules", "babel.config.js", "metro.config.js", "jest.config.js"]

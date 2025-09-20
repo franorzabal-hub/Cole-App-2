@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -10,19 +10,25 @@ import {
   Image,
   Dimensions,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es, enUS, pt, fr, it } from 'date-fns/locale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IOSHeader from '@/components/IOSHeader';
 import FilterChip from '@/components/ui/FilterChip';
 import { tokens } from '@/theme/tokens';
+import { MessagesService } from '@/services/messages.service';
+import { AuthService } from '@/services/auth.service';
+import { Message as BackendMessage, Student } from '@/config/api';
+import { CardSkeletonList } from '@/components/ui/Skeleton';
 
 const { width } = Dimensions.get('window');
 
+// Adapter interface to match the existing MessagesScreen expectations
 interface Message {
   id: string;
   senderName: string;
@@ -34,59 +40,8 @@ interface Message {
   isTeacher?: boolean;
   studentId?: string;
   studentName?: string;
+  subject?: string;
 }
-
-const mockMessages: Message[] = [
-  {
-    id: '1',
-    senderName: 'Prof. María García',
-    senderRole: 'Profesora de Matemáticas',
-    preview: 'Recordatorio: La tarea de fracciones es para mañana',
-    timestamp: new Date(Date.now() - 3600000),
-    unread: true,
-    isTeacher: true,
-    studentId: '1',
-    studentName: 'Juan Pérez',
-  },
-  {
-    id: '2',
-    senderName: 'Coordinación Académica',
-    senderRole: 'Administración',
-    preview: 'Se ha actualizado el calendario de exámenes del segundo trimestre',
-    timestamp: new Date(Date.now() - 7200000),
-    unread: true,
-    isTeacher: false,
-  },
-  {
-    id: '3',
-    senderName: 'Prof. Juan Pérez',
-    senderRole: 'Profesor de Educación Física',
-    preview: 'Por favor traer el uniforme deportivo completo para la clase',
-    timestamp: new Date(Date.now() - 86400000),
-    unread: false,
-    isTeacher: true,
-    studentId: '2',
-    studentName: 'María Pérez',
-  },
-  {
-    id: '4',
-    senderName: 'Dirección',
-    senderRole: 'Directora',
-    preview: 'Información importante sobre las actividades del mes',
-    timestamp: new Date(Date.now() - 172800000),
-    unread: false,
-    isTeacher: false,
-  },
-  {
-    id: '5',
-    senderName: 'Prof. Ana Rodríguez',
-    senderRole: 'Profesora de Inglés',
-    preview: 'Great job on today\'s presentation! Keep up the good work',
-    timestamp: new Date(Date.now() - 259200000),
-    unread: false,
-    isTeacher: true,
-  },
-];
 
 export default function MessagesScreen() {
   const navigation = useNavigation();
@@ -94,6 +49,9 @@ export default function MessagesScreen() {
   const { t, i18n } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // Get the appropriate date locale based on current language
   const getDateLocale = () => {
@@ -106,31 +64,90 @@ export default function MessagesScreen() {
     }
   };
 
-  const filters = [
-    { key: 'all', label: t('common.all'), icon: 'filter-list' },
-    { key: 'unread', label: t('messages.unread'), icon: 'markunread' },
-    { key: 'student-1', label: 'Juan Pérez', icon: 'face' },
-    { key: 'student-2', label: 'María Pérez', icon: 'face' },
-  ];
+  // Load messages from the backend
+  const loadMessages = async () => {
+    try {
+      setLoading(true);
+      const backendMessages = await MessagesService.getMessages('all');
+
+      // Transform backend messages to match the screen's expected format
+      const transformedMessages: Message[] = backendMessages.map(msg => {
+        const sentDate = parseISO(msg.sentAt);
+
+        return {
+          id: msg.id,
+          senderName: `${msg.sender.firstName} ${msg.sender.lastName}`,
+          senderRole: t('messages.teacher'), // Default role, could be enhanced with role information
+          preview: msg.content.length > 100 ? msg.content.substring(0, 100) + '...' : msg.content,
+          timestamp: sentDate,
+          unread: !msg.isRead,
+          avatar: undefined, // Backend doesn't provide avatar URLs yet
+          isTeacher: true, // Default to true, could be enhanced with role information
+          studentId: undefined, // Could be enhanced with student association
+          studentName: undefined,
+          subject: msg.subject,
+        };
+      });
+
+      setMessages(transformedMessages);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      // Fall back to empty array on error
+      setMessages([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load students for filtering
+  const loadStudents = async () => {
+    try {
+      const userChildren = await AuthService.getUserChildren();
+      setStudents(userChildren);
+    } catch (error) {
+      console.error('Error loading students:', error);
+      setStudents([]);
+    }
+  };
+
+  useEffect(() => {
+    loadMessages();
+    loadStudents();
+  }, []);
+
+  const filters = useMemo(() => {
+    const baseFilters = [
+      { key: 'all', label: t('common.all'), icon: 'filter-list' },
+      { key: 'unread', label: t('messages.unread'), icon: 'markunread' },
+    ];
+
+    // Add student filters if we have students
+    const studentFilters = students.map(student => ({
+      key: `student-${student.id}`,
+      label: `${student.firstName} ${student.lastName}`,
+      icon: 'face' as const
+    }));
+
+    return [...baseFilters, ...studentFilters];
+  }, [students, t]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 2000);
+    await loadMessages();
+    setRefreshing(false);
   };
 
   const filteredMessages = useMemo(() => {
-    if (selectedFilter === 'all') return mockMessages;
-    if (selectedFilter === 'unread') return mockMessages.filter(msg => msg.unread);
+    if (selectedFilter === 'all') return messages;
+    if (selectedFilter === 'unread') return messages.filter(msg => msg.unread);
     if (selectedFilter.startsWith('student-')) {
       const studentId = selectedFilter.split('-')[1];
-      return mockMessages.filter(msg => msg.studentId === studentId);
+      return messages.filter(msg => msg.studentId === studentId);
     }
-    return mockMessages;
-  }, [selectedFilter]);
+    return messages;
+  }, [selectedFilter, messages]);
 
   const getTimeString = (date: Date) => {
     const now = new Date();
@@ -188,6 +205,14 @@ export default function MessagesScreen() {
     </TouchableOpacity>
   );
 
+  if (loading && !refreshing) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={tokens.color.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {/* Fixed Header Bar */}
@@ -231,22 +256,11 @@ export default function MessagesScreen() {
         }
         ListEmptyComponent={
           refreshing ? (
-            <View style={styles.emptyContainer}>
-              <Icon name="mail-outline" size={64} color={tokens.color.gray300} />
-              <Text style={styles.emptyText}>{t('messages.loadingMessages')}</Text>
-            </View>
+            <CardSkeletonList />
           ) : (
             <View style={styles.emptyContainer}>
               <Icon name="mail-outline" size={64} color={tokens.color.gray300} />
               <Text style={styles.emptyText}>{t('messages.empty')}</Text>
-              <TouchableOpacity
-                style={styles.fab}
-                onPress={() => navigation.navigate('NewMessage' as never)}
-                accessibilityRole="button"
-                accessibilityLabel={t('messages.createMessage')}
-              >
-                <Icon name="edit" size={24} color="#fff" />
-              </TouchableOpacity>
             </View>
           )
         }
@@ -268,6 +282,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: tokens.color.gray50,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,

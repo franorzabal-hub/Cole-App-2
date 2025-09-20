@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -10,11 +10,12 @@ import {
   Image,
   Dimensions,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { format, isSameDay } from 'date-fns';
+import { format, isSameDay, parseISO } from 'date-fns';
 import { es, enUS, pt, fr, it } from 'date-fns/locale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IOSHeader from '@/components/IOSHeader';
@@ -23,9 +24,29 @@ import FilterChip from '@/components/ui/FilterChip';
 import Card from '@/components/ui/Card';
 import { tokens } from '@/theme/tokens';
 import { CardSkeletonList } from '@/components/ui/Skeleton';
-import { mockEvents, mockStudents, type MockEventItem } from '@/data/mockData';
+import { EventsService } from '@/services/events.service';
+import { Event } from '@/config/api';
+import { AuthService } from '@/services/auth.service';
 
 const { width } = Dimensions.get('window');
+
+// Adapter interface to match the existing EventsScreen expectations
+interface EventItem {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  date: Date;
+  time: string;
+  category: string;
+  imageUrl?: string;
+  attendees?: number;
+  maxAttendees?: number;
+  isRegistered?: boolean;
+  isRead?: boolean;
+  studentId?: string;
+  studentName?: string;
+}
 
 export default function EventsScreen() {
   const navigation = useNavigation();
@@ -34,6 +55,9 @@ export default function EventsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [students, setStudents] = useState<any[]>([]);
 
   // Get the appropriate date locale based on current language
   const getDateLocale = () => {
@@ -46,36 +70,116 @@ export default function EventsScreen() {
     }
   };
 
-  const filters = [
-    { key: 'all', label: t('events.filters.all'), icon: 'filter-list' },
-    { key: 'unread', label: t('events.filters.unread'), icon: 'markunread' },
-    { key: 'student-1', label: 'Juan Pérez', icon: 'face' },
-    { key: 'student-2', label: 'María Pérez', icon: 'face' },
-  ];
+  // Load events from the backend
+  const loadEvents = async () => {
+    try {
+      setLoading(true);
+      const currentDate = new Date();
+      const month = currentDate.getMonth() + 1;
+      const year = currentDate.getFullYear();
+
+      const backendEvents = await EventsService.getEvents(month, year);
+
+      // Transform backend events to match the screen's expected format
+      const transformedEvents: EventItem[] = backendEvents.map(event => {
+        const startDate = parseISO(event.startDate);
+        const endDate = parseISO(event.endDate);
+
+        return {
+          id: event.id,
+          title: event.title,
+          description: event.description,
+          location: event.location,
+          date: startDate,
+          time: format(startDate, 'HH:mm') + ' - ' + format(endDate, 'HH:mm'),
+          category: determineCategory(event.title, event.description),
+          imageUrl: undefined, // Backend doesn't provide images yet
+          attendees: event.attendeeCount,
+          maxAttendees: undefined, // Backend doesn't provide max attendees yet
+          isRegistered: event.isRegistered,
+          isRead: true, // Default to read for now
+          studentId: undefined, // Backend doesn't provide student association yet
+          studentName: undefined,
+        };
+      });
+
+      setEvents(transformedEvents);
+    } catch (error) {
+      console.error('Error loading events:', error);
+      // Fall back to empty array on error
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load students for filtering
+  const loadStudents = async () => {
+    try {
+      // TODO: Implement when students endpoint is available
+      // For now, use empty array
+      setStudents([]);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    }
+  };
+
+  // Determine category based on title and description
+  const determineCategory = (title: string, description: string): string => {
+    const text = (title + ' ' + description).toLowerCase();
+    if (text.includes('festival') || text.includes('fiesta')) return 'Festival';
+    if (text.includes('reunión') || text.includes('meeting') || text.includes('junta')) return 'Reunión';
+    if (text.includes('deporte') || text.includes('sport') || text.includes('fútbol') || text.includes('basket')) return 'Deportes';
+    if (text.includes('cultur') || text.includes('arte') || text.includes('música')) return 'Cultural';
+    return 'General';
+  };
+
+  useEffect(() => {
+    loadEvents();
+    loadStudents();
+  }, []);
+
+  const filters = useMemo(() => {
+    const baseFilters = [
+      { key: 'all', label: t('events.filters.all'), icon: 'filter-list' },
+      { key: 'unread', label: t('events.filters.unread'), icon: 'markunread' },
+    ];
+
+    // Add student filters if we have students
+    const studentFilters = students.map((student, index) => ({
+      key: `student-${student.id || index}`,
+      label: student.name || `Student ${index + 1}`,
+      icon: 'face',
+    }));
+
+    return [...baseFilters, ...studentFilters];
+  }, [students, t]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 2000);
+    await loadEvents();
+    setRefreshing(false);
   };
 
   const filteredEvents = useMemo(() => {
-    let filtered = mockEvents as MockEventItem[];
+    let filtered = events;
+
     if (selectedFilter === 'unread') {
       filtered = filtered.filter(item => !item.isRead);
     } else if (selectedFilter.startsWith('student-')) {
       const studentId = selectedFilter.split('-')[1];
       filtered = filtered.filter(item => item.studentId === studentId);
     }
+
     if (selectedDate) {
       filtered = filtered.filter(item => isSameDay(item.date, selectedDate));
     }
+
     return filtered.sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [selectedFilter, selectedDate]);
+  }, [events, selectedFilter, selectedDate]);
 
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date);
@@ -169,13 +273,13 @@ export default function EventsScreen() {
             </View>
           </View>
 
-          {item.maxAttendees && (
+          {item.maxAttendees && item.attendees !== undefined && (
             <View style={styles.attendeesContainer}>
               <View style={styles.progressBar}>
                 <View
                   style={[
                     styles.progressFill,
-                    { width: `${(item.attendees! / item.maxAttendees) * 100}%` },
+                    { width: `${(item.attendees / item.maxAttendees) * 100}%` },
                   ]}
                 />
               </View>
@@ -189,11 +293,19 @@ export default function EventsScreen() {
     </TouchableOpacity>
   );
 
-  const calendarEvents = (mockEvents as MockEventItem[]).map(event => ({
+  const calendarEvents = events.map(event => ({
     id: event.id,
     date: event.date,
     title: event.title,
   }));
+
+  if (loading && !refreshing) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={tokens.color.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -274,6 +386,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: tokens.color.gray50,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,

@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { BullModule } from '@nestjs/bull';
+import { ConfigService } from '@nestjs/config';
 import { join } from 'path';
+
+// Configuration Module (includes secrets management)
+import { ConfigModule } from './config/config.module';
 
 // Core Modules
 import { PrismaModule } from './prisma/prisma.module';
@@ -20,36 +23,43 @@ import { StudentsModule } from './students/students.module';
 
 @Module({
   imports: [
-    // Configuration
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: '.env',
-    }),
+    // Configuration (with secrets management)
+    ConfigModule,
 
     // GraphQL
-    GraphQLModule.forRoot<ApolloDriverConfig>({
+    GraphQLModule.forRootAsync<ApolloDriverConfig>({
       driver: ApolloDriver,
-      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
-      sortSchema: true,
-      playground: process.env.NODE_ENV !== 'production',
-      context: ({ req, res }) => ({ req, res }),
-      formatError: (error) => {
-        const graphQLFormattedError = {
-          message: error.message,
-          code: error.extensions?.code || 'INTERNAL_SERVER_ERROR',
-          path: error.path,
-        };
-        return graphQLFormattedError;
-      },
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+        sortSchema: true,
+        playground: configService.get('app.features.enableGraphQLPlayground'),
+        context: ({ req, res }) => ({ req, res }),
+        formatError: (error) => {
+          const graphQLFormattedError = {
+            message: error.message,
+            code: error.extensions?.code || 'INTERNAL_SERVER_ERROR',
+            path: error.path,
+          };
+          return graphQLFormattedError;
+        },
+        cors: {
+          origin: configService.get('app.cors.origins'),
+          credentials: configService.get('app.cors.credentials'),
+        },
+      }),
     }),
 
     // Redis Queue
-    BullModule.forRoot({
-      redis: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD,
-      },
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        redis: {
+          host: configService.get('app.redis.host'),
+          port: configService.get('app.redis.port'),
+          password: configService.get('app.redis.password'),
+        },
+      }),
     }),
 
     // Core Modules

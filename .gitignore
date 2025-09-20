@@ -20,17 +20,27 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# Local env files
-.env
+# Local env files - CRITICAL: Never commit these
 .env.local
+.env.*.local
 .env.development.local
 .env.test.local
 .env.production.local
+*.env
+!.env.example
+!backend/.env
 
 # Backend specific
 backend/dist/
-backend/.env
+backend/.env.local
 backend/firebase-service-account.json
+backend/*.key
+backend/*.pem
+
+# Web Admin specific
+web-admin/.next/
+web-admin/out/
+web-admin/.env.local
 
 # Mobile app specific
 mobile-app/.expo/

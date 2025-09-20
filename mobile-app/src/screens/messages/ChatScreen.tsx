@@ -13,15 +13,18 @@ import {
   Modal,
   ScrollView,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es, enUS, pt, fr, it } from 'date-fns/locale';
 import IOSHeader from '@/components/IOSHeader';
 import { tokens } from '@/theme/tokens';
+import { MessagesService } from '@/services/messages.service';
+import { Message as BackendMessage } from '@/config/api';
 
 interface Message {
   id: string;
@@ -43,53 +46,23 @@ interface Message {
   subject?: string;
 }
 
-const mockMessages: Message[] = [
-  {
-    id: '1',
-    text: 'Estimados padres, les informamos que mañana viernes habrá una reunión extraordinaria a las 18:30 para discutir las actividades del próximo trimestre.',
-    timestamp: new Date(Date.now() - 86400000 * 2),
-    sender: 'school',
-    senderName: 'Dirección Académica',
-    senderRole: 'Administración',
+// Transform backend message to ChatScreen format
+const transformMessage = (backendMsg: BackendMessage): Message => {
+  const sentDate = parseISO(backendMsg.sentAt);
+
+  return {
+    id: backendMsg.id,
+    text: backendMsg.content,
+    timestamp: sentDate,
+    sender: 'school', // For now, assume all messages are from school
+    senderName: `${backendMsg.sender.firstName} ${backendMsg.sender.lastName}`,
+    senderRole: 'Staff',
     type: 'announcement',
-    priority: 'high',
-    allowReplies: false,
-    subject: 'Reunión Extraordinaria - Viernes 18:30',
-  },
-  {
-    id: '2',
-    text: 'Buenas tardes. ¿Podrían confirmar si habrá servicio de transporte el día de la excursión?',
-    timestamp: new Date(Date.now() - 86400000),
-    sender: 'parent',
-    senderName: 'Usted',
-    type: 'inquiry',
     priority: 'normal',
     allowReplies: true,
-  },
-  {
-    id: '3',
-    text: 'Sí, el servicio de transporte estará disponible. Los buses saldrán a las 8:00 AM desde el colegio. Por favor, los estudiantes deben llegar 15 minutos antes.',
-    timestamp: new Date(Date.now() - 3600000 * 18),
-    sender: 'school',
-    senderName: 'Prof. García',
-    senderRole: 'Coordinación',
-    type: 'response',
-    priority: 'normal',
-    allowReplies: true,
-    replyTo: '2',
-  },
-  {
-    id: '4',
-    text: 'Perfecto, muchas gracias por la información.',
-    timestamp: new Date(Date.now() - 3600000 * 12),
-    sender: 'parent',
-    senderName: 'Usted',
-    type: 'response',
-    priority: 'normal',
-    allowReplies: true,
-    replyTo: '3',
-  },
-];
+    subject: backendMsg.subject,
+  };
+};
 
 export default function ChatScreen() {
   const navigation = useNavigation();
@@ -115,7 +88,8 @@ export default function ChatScreen() {
     chatId: '1',
   };
 
-  const [messages, setMessages] = useState(mockMessages);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loading, setLoading] = useState(true);
   const [inputText, setInputText] = useState('');
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
   const [showOptions, setShowOptions] = useState(false);
@@ -124,6 +98,21 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
 
   const canReply = messages.length > 0 && messages[messages.length - 1].allowReplies;
+
+  // Load conversation thread
+  const loadMessages = async () => {
+    try {
+      setLoading(true);
+      const conversationThread = await MessagesService.getConversationThread(chatId);
+      const transformedMessages = conversationThread.map(transformMessage);
+      setMessages(transformedMessages);
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+      setMessages([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Auto-scroll when keyboard appears
   useEffect(() => {
@@ -138,14 +127,19 @@ export default function ChatScreen() {
     };
   }, []);
 
+  // Load messages on mount
+  useEffect(() => {
+    loadMessages();
+  }, [chatId]);
+
   // Scroll to bottom when messages change
   useEffect(() => {
-    if (flatListRef.current) {
+    if (flatListRef.current && messages.length > 0) {
       flatListRef.current.scrollToEnd({ animated: false });
     }
   }, [messages.length]);
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!inputText.trim()) return;
 
     if (!canReply) {
@@ -157,26 +151,30 @@ export default function ChatScreen() {
       return;
     }
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      text: inputText.trim(),
-      timestamp: new Date(),
-      sender: 'parent',
-      senderName: 'Usted',
-      type: replyToMessage ? 'response' : messageType,
-      priority: selectedPriority,
-      allowReplies: true,
-      replyTo: replyToMessage?.id,
-    };
+    try {
+      const messageText = inputText.trim();
+      setInputText('');
+      setReplyToMessage(null);
+      setSelectedPriority('normal');
 
-    setMessages([...messages, newMessage]);
-    setInputText('');
-    setReplyToMessage(null);
-    setSelectedPriority('normal');
+      // Send the reply using the MessagesService
+      const messageId = await MessagesService.replyToMessage(chatId, messageText);
 
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+      if (messageId) {
+        // Reload the conversation to get the updated thread
+        await loadMessages();
+
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      } else {
+        Alert.alert(t('common.error'), t('messages.failedToSend'));
+        setInputText(messageText); // Restore the message text
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      Alert.alert(t('common.error'), t('messages.failedToSend'));
+    }
   };
 
   const handleLongPress = (message: Message) => {
@@ -291,6 +289,23 @@ export default function ChatScreen() {
       <View style={styles.dateLine} />
     </View>
   );
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <IOSHeader
+          title={recipientName}
+          subtitle={recipientRole}
+          scrollY={scrollY}
+          showBackButton
+          onBackPress={() => navigation.goBack()}
+        />
+        <View style={[styles.contentContainer, styles.centerContent, { paddingTop: insets.top + 44 }]}>
+          <ActivityIndicator size="large" color={tokens.color.primary} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -462,6 +477,10 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     flex: 1,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   messagesList: {
     flex: 1,

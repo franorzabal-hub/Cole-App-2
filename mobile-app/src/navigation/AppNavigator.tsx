@@ -192,6 +192,10 @@ function MainNavigator() {
             ? unreadCounts.messages > 99
               ? '99+'
               : unreadCounts.messages
+            : route.name === 'Reports' && unreadCounts.reports > 0
+            ? unreadCounts.reports > 99
+              ? '99+'
+              : unreadCounts.reports
             : undefined,
       })}
     >

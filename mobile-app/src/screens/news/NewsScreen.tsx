@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -10,11 +10,12 @@ import {
   Image,
   Dimensions,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es, enUS, pt, fr, it } from 'date-fns/locale';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import IOSHeader from '@/components/IOSHeader';
@@ -23,9 +24,28 @@ import FilterChip from '@/components/ui/FilterChip';
 import Card from '@/components/ui/Card';
 import { tokens } from '@/theme/tokens';
 import { CardSkeletonList } from '@/components/ui/Skeleton';
-import { mockNews, mockStudents, type MockNewsItem } from '@/data/mockData';
+import { NewsService } from '@/services/news.service';
+import { News } from '@/config/api';
 
 const { width } = Dimensions.get('window');
+
+// Adapter interface to match the existing NewsScreen expectations
+interface NewsItem {
+  id: string;
+  title: string;
+  content: string;
+  summary: string;
+  author: string;
+  authorRole: string;
+  category: string;
+  publishedAt: Date;
+  imageUrl?: string;
+  priority: 'normal' | 'high' | 'urgent';
+  attachments?: string[];
+  isRead?: boolean;
+  studentId?: string;
+  studentName?: string;
+}
 
 export default function NewsScreen() {
   const navigation = useNavigation();
@@ -34,6 +54,9 @@ export default function NewsScreen() {
   const { t, i18n } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [news, setNews] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [students, setStudents] = useState<any[]>([]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -48,32 +71,113 @@ export default function NewsScreen() {
     }
   };
 
-  const filters = [
-    { key: 'all', label: t('news.categories.all'), icon: 'filter-list' },
-    { key: 'unread', label: t('common.new'), icon: 'markunread' },
-    ...mockStudents.map(student => ({
+  // Load news from the backend
+  const loadNews = async () => {
+    try {
+      setLoading(true);
+      const backendNews = await NewsService.getNews('all');
+
+      // Transform backend news to match the screen's expected format
+      const transformedNews: NewsItem[] = backendNews.map(item => {
+        const publishedDate = parseISO(item.publishedAt);
+
+        return {
+          id: item.id,
+          title: item.title,
+          content: item.content,
+          summary: item.content.substring(0, 150) + '...', // Create summary from content
+          author: item.author ? `${item.author.firstName} ${item.author.lastName}` : t('news.unknownAuthor'),
+          authorRole: item.author?.role || t('news.staff'),
+          category: determineCategory(item.title, item.content),
+          publishedAt: publishedDate,
+          imageUrl: undefined, // Backend doesn't provide images yet
+          priority: mapPriority(item.priority),
+          attachments: item.attachments,
+          isRead: item.isRead,
+          studentId: undefined, // Backend doesn't provide student association yet
+          studentName: undefined,
+        };
+      });
+
+      setNews(transformedNews);
+    } catch (error) {
+      console.error('Error loading news:', error);
+      // Fall back to empty array on error
+      setNews([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Map backend priority to UI priority
+  const mapPriority = (priority: string): 'normal' | 'high' | 'urgent' => {
+    switch (priority) {
+      case 'urgent':
+        return 'urgent';
+      case 'high':
+        return 'high';
+      default:
+        return 'normal';
+    }
+  };
+
+  // Determine category based on title and content
+  const determineCategory = (title: string, content: string): string => {
+    const text = (title + ' ' + content).toLowerCase();
+    if (text.includes('académ') || text.includes('academic') || text.includes('nota') || text.includes('grade')) return t('news.categories.academic');
+    if (text.includes('evento') || text.includes('event') || text.includes('festival')) return t('news.categories.events');
+    if (text.includes('deporte') || text.includes('sport')) return t('news.categories.sports');
+    if (text.includes('urgente') || text.includes('urgent') || text.includes('importante')) return t('news.categories.urgent');
+    return t('news.categories.general');
+  };
+
+  // Load students for filtering
+  const loadStudents = async () => {
+    try {
+      // TODO: Implement when students endpoint is available
+      // For now, use empty array
+      setStudents([]);
+    } catch (error) {
+      console.error('Error loading students:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadNews();
+    loadStudents();
+  }, []);
+
+  const filters = useMemo(() => {
+    const baseFilters = [
+      { key: 'all', label: t('news.categories.all'), icon: 'filter-list' },
+      { key: 'unread', label: t('messages.unread'), icon: 'markunread' },
+    ];
+
+    // Add student filters if we have students
+    const studentFilters = students.map(student => ({
       key: `student-${student.id}`,
       label: student.name,
       icon: 'face' as const
-    }))
-  ];
+    }));
 
-  const onRefresh = () => {
+    return [...baseFilters, ...studentFilters];
+  }, [students, t]);
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 2000);
+    await loadNews();
+    setRefreshing(false);
   };
 
   const filteredNews = useMemo(() => {
-    if (selectedFilter === 'all') return mockNews;
-    if (selectedFilter === 'unread') return mockNews.filter(item => !item.isRead);
+    if (selectedFilter === 'all') return news;
+    if (selectedFilter === 'unread') return news.filter(item => !item.isRead);
     if (selectedFilter.startsWith('student-')) {
       const studentId = selectedFilter.split('-')[1];
-      return mockNews.filter(item => item.studentId === studentId);
+      return news.filter(item => item.studentId === studentId);
     }
-    return mockNews as MockNewsItem[];
-  }, [selectedFilter]);
+    return news;
+  }, [selectedFilter, news]);
 
   const renderNewsCard = (item: NewsItem) => (
     <TouchableOpacity
@@ -119,6 +223,14 @@ export default function NewsScreen() {
       </Card>
     </TouchableOpacity>
   );
+
+  if (loading && !refreshing) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={tokens.color.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -181,6 +293,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: tokens.color.gray50,
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,

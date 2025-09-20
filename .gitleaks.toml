@@ -1,0 +1,65 @@
+# Gitleaks configuration file
+title = "ColeApp gitleaks config"
+
+[allowlist]
+description = "Global allow list"
+paths = [
+    ".gitleaks.toml",
+    "**/.env.example",
+    "**/.env.template",
+    "**/test/**",
+    "**/tests/**",
+    "**/__tests__/**",
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/dist/**",
+    "**/build/**"
+]
+
+# Custom rules for ColeApp
+[[rules]]
+id = "firebase-private-key"
+description = "Firebase Private Key"
+regex = '''-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----'''
+tags = ["key", "firebase"]
+
+[[rules]]
+id = "jwt-secret"
+description = "JWT Secret"
+regex = '''JWT_SECRET\s*=\s*['"]?[^'"\s]{10,}['"]?'''
+tags = ["secret", "jwt"]
+
+[[rules]]
+id = "database-url"
+description = "Database URL with credentials"
+regex = '''postgresql://[^:]+:[^@]+@[^/]+/\w+'''
+tags = ["database", "credentials"]
+
+[[rules]]
+id = "api-key"
+description = "Generic API Key"
+regex = '''(?i)(api[_\-]?key|apikey)\s*[:=]\s*['"]?[a-zA-Z0-9]{20,}['"]?'''
+tags = ["key", "api"]
+
+# Entropy-based detection for high-entropy strings
+[[rules]]
+id = "high-entropy"
+description = "High Entropy String"
+regex = '''[a-zA-Z0-9+/]{40,}={0,2}'''
+entropy = 4.5
+tags = ["entropy"]
+
+# Common secret patterns
+[[rules]]
+id = "generic-secret"
+description = "Generic Secret"
+regex = '''(?i)(secret|password|passwd|pwd|token|auth)\s*[:=]\s*['"]?[^'"\s]{8,}['"]?'''
+tags = ["secret", "generic"]
+[rules.allowlist]
+regexes = [
+    "CHANGE_THIS",
+    "your-",
+    "example",
+    "template",
+    "placeholder"
+]

@@ -85,11 +85,6 @@ export class NewsService {
       where,
       include: {
         campus: true,
-        author: {
-          include: {
-            person: true,
-          },
-        },
         newsReads: userId
           ? {
               where: {
@@ -104,14 +99,16 @@ export class NewsService {
         },
       },
       orderBy: {
-        publishedAt: 'desc',
+        createdAt: 'desc',
       },
     });
 
-    return news.map((item) => ({
+    return news.map((item: any) => ({
       ...item,
       isRead: userId ? item.newsReads?.length > 0 : false,
-      authorName: `${item.author.person.firstName} ${item.author.person.lastName}`,
+      authorName: item.author?.person
+        ? `${item.author.person.firstName} ${item.author.person.lastName}`
+        : 'Admin',
     }));
   }
 

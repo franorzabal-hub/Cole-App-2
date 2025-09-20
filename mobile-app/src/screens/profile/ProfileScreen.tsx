@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   ScrollView,
@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Switch,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +22,8 @@ import { useHeaderHeight } from '@/hooks/useHeaderHeight';
 import { tokens } from '@/theme/tokens';
 import Constants from 'expo-constants';
 import { changeLanguage, availableLanguages } from '@/i18n';
+import { AuthService } from '@/services/auth.service';
+import { User, Student } from '@/config/api';
 
 interface ProfileSection {
   title: string;
@@ -41,19 +44,43 @@ export default function ProfileScreen() {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { totalHeaderHeight } = useHeaderHeight();
-  const { t, i18n } = useTranslation();
+  const { t, i18n, ready } = useTranslation();
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [children, setChildren] = useState<Student[]>([]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  const onRefresh = () => {
+  // Load user profile data
+  const loadProfileData = async () => {
+    try {
+      setLoading(true);
+      const [user, userChildren] = await Promise.all([
+        AuthService.getCurrentUser(),
+        AuthService.getUserChildren(),
+      ]);
+
+      setCurrentUser(user);
+      setChildren(userChildren);
+    } catch (error) {
+      console.error('Error loading profile data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProfileData();
+  }, []);
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 2000);
+    await loadProfileData();
+    setRefreshing(false);
   };
 
   const handleLogout = () => {
@@ -68,12 +95,17 @@ export default function ProfileScreen() {
         {
           text: t('auth.logout'),
           style: 'destructive',
-          onPress: () => {
-            // Here you would call your logout logic
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' as never }],
-            });
+          onPress: async () => {
+            try {
+              await AuthService.signOut();
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Login' as never }],
+              });
+            } catch (error) {
+              console.error('Error signing out:', error);
+              Alert.alert(t('common.error'), t('auth.logoutError'));
+            }
           },
         },
       ],
@@ -99,47 +131,40 @@ export default function ProfileScreen() {
         {
           icon: 'person',
           label: t('auth.name'),
-          value: 'Ana García Rodríguez',
+          value: currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : t('common.loading'),
           type: 'info',
         },
         {
           icon: 'email',
           label: t('profile.email'),
-          value: 'ana.garcia@example.com',
+          value: currentUser?.email || t('common.loading'),
           type: 'info',
         },
         {
           icon: 'phone',
           label: t('profile.phone'),
-          value: '+54 11 4567-8900',
+          value: currentUser?.phone || '-',
           type: 'info',
         },
         {
           icon: 'badge',
           label: t('profile.dni'),
-          value: '35.678.901',
+          value: currentUser?.dni || '-',
           type: 'info',
         },
       ],
     },
     {
       title: t('profile.children'),
-      items: [
-        {
-          icon: 'face',
-          label: 'Juan Pérez García',
-          value: `3er ${t('profile.grade')} B`,
-          type: 'action',
-          onPress: () => {},
+      items: children.map(child => ({
+        icon: 'face' as const,
+        label: `${child.firstName} ${child.lastName}`,
+        value: child.grade ? `${child.grade}` : '-',
+        type: 'action' as const,
+        onPress: () => {
+          // TODO: Navigate to child details
         },
-        {
-          icon: 'face',
-          label: 'María Pérez García',
-          value: `5to ${t('profile.grade')} A`,
-          type: 'action',
-          onPress: () => {},
-        },
-      ],
+      })),
     },
     {
       title: t('profile.settings'),
@@ -167,7 +192,7 @@ export default function ProfileScreen() {
         {
           icon: 'language',
           label: t('profile.language'),
-          value: t('profile.languageName'),
+          value: t(`languages.${i18n.language}`),
           type: 'action',
           onPress: () => setShowLanguageModal(true),
         },
@@ -248,6 +273,14 @@ export default function ProfileScreen() {
     return <View key={item.label}>{content}</View>;
   };
 
+  if ((loading && !refreshing) || !ready) {
+    return (
+      <View style={[styles.container, styles.centerContent]}>
+        <ActivityIndicator size="large" color={tokens.color.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <IOSHeader
@@ -286,7 +319,9 @@ export default function ProfileScreen() {
               <Icon name="camera-alt" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
-          <Text style={styles.userName}>Ana García Rodríguez</Text>
+          <Text style={styles.userName}>
+            {currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : t('common.loading')}
+          </Text>
           <Text style={styles.userRole}>{t('profile.motherRole')}</Text>
         </View>
 
@@ -362,6 +397,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F2F2F7',
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,

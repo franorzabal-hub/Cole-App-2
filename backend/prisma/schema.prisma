@@ -46,6 +46,7 @@ model User {
   lastName        String
   phone           String?
   photoUrl        String?
+  password        String?   // For development mode authentication
   isActive        Boolean   @default(true)
   isSuperAdmin    Boolean   @default(false)
   lastLoginAt     DateTime?
