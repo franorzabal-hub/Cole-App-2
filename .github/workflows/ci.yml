@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [backend, web-admin]
+        module: [backend, web-admin, mobile-app]
 
     steps:
       - name: Checkout code
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [backend, web-admin]
+        module: [backend, web-admin, mobile-app]
 
     steps:
       - name: Checkout code
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [backend, web-admin]
+        module: [backend, web-admin, mobile-app]
 
     steps:
       - name: Checkout code
@@ -98,7 +98,7 @@ jobs:
     needs: [lint, typecheck]
     strategy:
       matrix:
-        module: [backend, web-admin]
+        module: [backend, web-admin, mobile-app]
 
     steps:
       - name: Checkout code

@@ -6,6 +6,9 @@ paths:
   - web-admin/src
   - web-admin/app
   - web-admin/components
+  - mobile-app/src
+  - mobile-app/components
+  - mobile-app/screens
   - shared/src
 
 # Paths to exclude from the analysis
