@@ -1,10 +1,19 @@
-name: Deploy to Google Cloud
+name: Deploy to Google Cloud (DISABLED - Needs GCP credentials)
+
+# Deployment workflow disabled until GCP credentials are configured
+# To enable:
+# 1. Set up GCP_PROJECT_ID secret
+# 2. Set up GCP_SA_KEY secret with service account credentials
+# 3. Uncomment the 'on' section below
+#
+# on:
+#   push:
+#     branches:
+#       - main
+#       - develop
 
 on:
-  push:
-    branches:
-      - main
-      - develop
+  workflow_dispatch:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}

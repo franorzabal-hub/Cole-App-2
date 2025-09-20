@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  output: 'standalone',
   webpack: (config, { isServer }) => {
     // Solución para el problema de undici con Firebase
     if (!isServer) {
