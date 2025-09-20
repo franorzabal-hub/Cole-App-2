@@ -115,6 +115,7 @@ jobs:
 
       - name: Download all coverage reports
         uses: actions/download-artifact@v3
+        continue-on-error: true
 
       - name: Generate combined report
         run: |

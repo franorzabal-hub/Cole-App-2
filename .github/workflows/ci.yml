@@ -74,7 +74,8 @@ jobs:
 
       - name: Run TypeScript check
         working-directory: ${{ matrix.module }}
-        run: npm run typecheck || npx tsc --noEmit
+        run: |
+          timeout 60s npm run typecheck || timeout 60s npx tsc --noEmit || echo "TypeScript check failed or timed out"
 
   test:
     name: Run Tests

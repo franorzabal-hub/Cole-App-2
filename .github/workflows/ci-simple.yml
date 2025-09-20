@@ -1,10 +1,9 @@
-name: CI
+name: CI Simple
 
 on:
+  workflow_dispatch:
   push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
+    branches: [ci-test]
 
 jobs:
   test:
