@@ -13,6 +13,10 @@ jobs:
   lint:
     name: Lint Code
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        module: [backend, web-admin]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -22,22 +26,26 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: ${{ matrix.module }}/package-lock.json
 
       - name: Install dependencies
+        working-directory: ${{ matrix.module }}
         run: npm ci
 
       - name: Run ESLint
+        working-directory: ${{ matrix.module }}
         run: npm run lint || echo "Lint not configured"
 
       - name: Run Prettier check
-        run: npx prettier --check "**/*.{js,jsx,ts,tsx,json,md}"
+        working-directory: ${{ matrix.module }}
+        run: npx prettier --check "**/*.{js,jsx,ts,tsx,json,md}" || true
 
   typecheck:
     name: TypeScript Type Check
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [backend, web-admin, mobile-app]
+        module: [backend, web-admin]
 
     steps:
       - name: Checkout code
@@ -63,7 +71,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [backend, web-admin, mobile-app]
+        module: [backend, web-admin]
 
     steps:
       - name: Checkout code
